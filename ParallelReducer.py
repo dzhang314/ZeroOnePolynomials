@@ -24,14 +24,13 @@ for i, j in pair_iterator():
     if os.path.isfile(filename):
         print(filename, "already computed.")
     else:
-        raise ValueError()
-        # # if we have hit the process limit, wait for a process to finish
-        # while len(processes) >= NUM_PROCESSES:
-        #     for k in range(NUM_PROCESSES):
-        #         if processes[k].poll() is not None:
-        #             del processes[k]
-        #             break
-        # # now that a slot is available, start a process to compute this file
-        # processes.append(
-        #     subprocess.Popen(["./EquationReducer", str(i), str(j), filename])
-        # )
+        # if we have hit the process limit, wait for a process to finish
+        while len(processes) >= NUM_PROCESSES:
+            for k in range(NUM_PROCESSES):
+                if processes[k].poll() is not None:
+                    del processes[k]
+                    break
+        # now that a slot is available, start a process to compute this file
+        processes.append(
+            subprocess.Popen(["./EquationReducer", str(i), str(j), filename])
+        )
