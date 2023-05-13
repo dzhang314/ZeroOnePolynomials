@@ -14,10 +14,13 @@ def pair_iterator():
                 yield (i, j)
 
 
-NUM_PROCESSES = 15
+NUM_PROCESSES = os.cpu_count()
+if NUM_PROCESSES is None:
+    NUM_PROCESSES = 8  # reasonable guess for number of cores
+NUM_PROCESSES -= 1  # reserve one process for this program, desktop UI, etc.
+
+
 processes = []
-
-
 for i, j in pair_iterator():
     filename = f"data/ReducedEquations_{i:04}_{j:04}.txt"
     # if this data file has not already been computed...
