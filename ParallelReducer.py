@@ -3,6 +3,7 @@
 import itertools
 import os
 import subprocess
+import sys
 
 
 def pair_iterator():
@@ -22,9 +23,9 @@ def get_num_cores() -> int:
 
 def main():
     processes: list[subprocess.Popen[bytes]] = []
-    num_processes = get_num_cores()
+    num_processes = int(sys.argv[1]) if len(sys.argv) > 1 else get_num_cores()
     for i, j in pair_iterator():
-        filename = f"data/ReducedEquations_{i:04}_{j:04}.txt"
+        filename = f"data/DeepReducedEquations_{i:04}_{j:04}.txt"
         # if this data file has not already been computed...
         if os.path.isfile(filename):
             print(filename, "already computed.")
@@ -37,7 +38,7 @@ def main():
                         break
             # now that a slot is available, start a process to compute this file
             processes.append(
-                subprocess.Popen(["./EquationReducer", str(i), str(j), filename])
+                subprocess.Popen(["./DeepEquationReducer", str(i), str(j), filename])
             )
 
 
