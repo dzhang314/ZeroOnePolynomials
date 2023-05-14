@@ -523,7 +523,7 @@ struct System {
     std::optional<System> simplify() const noexcept {
         for (const Equation &equation : ones) {
             if (equation.terms.size() == 1) {
-                const Term &term = equation.terms.front();
+                const Term term = equation.terms.front();
                 if (term.has_p()) {
                     std::optional<System> next = set_p_one(term.p_index);
                     return next.has_value() ? next->simplify() : std::nullopt;
@@ -550,6 +550,20 @@ struct System {
             }
         }
         return std::make_optional(*this);
+    }
+
+
+    constexpr Term find_unknown_variable() const noexcept {
+        constexpr index_t ZERO = static_cast<index_t>(0);
+        for (const Equation &equation : unknown) {
+            if (equation.terms.size() == 1) {
+                const Term term = equation.terms.front();
+                if (term.is_linear()) {
+                    return term;
+                }
+            }
+        }
+        return Term(ZERO, ZERO);
     }
 
 
@@ -625,13 +639,29 @@ int main(int argc, char **argv) {
         while (!stack.empty()) {
             const System current = std::move(stack.back());
             stack.pop_back();
-            if (!current.zeros.empty()) {
+            const Term var = current.find_unknown_variable();
+            if (var.has_p()) {
+                push(stack, current.set_p_zero(var.p_index));
+                push(stack, current.set_p_one(var.p_index));
+            } else if (var.has_q()) {
+                push(stack, current.set_q_zero(var.q_index));
+                push(stack, current.set_q_one(var.q_index));
+            } else if (!current.zeros.empty()) {
                 const Term zero_term = current.zeros.front();
                 push(stack, current.set_p_zero(zero_term.p_index));
                 push(stack, current.set_q_zero(zero_term.q_index));
             } else if (!current.unknown.empty()) {
-                push(stack, current.move_unknown_to_zero(0));
-                push(stack, current.move_unknown_to_one(0));
+                std::size_t best_index = 0;
+                std::size_t best_length = current.unknown[0].terms.size();
+                for (std::size_t k = 1; k < current.unknown.size(); ++k) {
+                    const std::size_t length = current.unknown[k].terms.size();
+                    if (length < best_length) {
+                        best_index = k;
+                        best_length = length;
+                    }
+                }
+                push(stack, current.move_unknown_to_zero(best_index));
+                push(stack, current.move_unknown_to_one(best_index));
             } else {
                 for (const Equation &equation : current.ones) {
                     output_file << equation << '\n';
