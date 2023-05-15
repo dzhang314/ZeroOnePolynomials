@@ -5,6 +5,7 @@ import itertools
 import os
 import subprocess
 import sys
+import time
 
 
 def pair_iterator():
@@ -35,10 +36,12 @@ def main():
         else:
             # if we have hit the process limit, wait for a process to finish
             while len(processes) >= num_processes:
+                found = False
                 for k in range(len(processes)):
                     return_code = processes[k][0].poll()
                     if return_code is not None:
                         _, file, src, dst = processes[k]
+                        found = True
                         if return_code == 0:
                             print("Finished computation of", dst + ".")
                         else:
@@ -47,8 +50,10 @@ def main():
                         file.close()
                         os.rename(src, dst)
                         break
+                if not found:
+                    time.sleep(0.25)
             # now that a slot is available, start a process to compute this file
-            temp_name = file_name + ".temp"
+            temp_name = file_name + "." + str(i + j) + ".temp"
             file = open(temp_name, "w+")
             print("Starting computation of", file_name + ".")
             processes.append(
