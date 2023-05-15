@@ -1,3 +1,5 @@
 /.vscode/
-/data/
+/data/ZeroOneEquations_*_*.txt
+/data/*.temp
+/proofs/
 /ZeroOneSolver
