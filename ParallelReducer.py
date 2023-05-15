@@ -22,6 +22,8 @@ def get_num_cores() -> int:
 
 
 def main():
+    if not os.path.isdir("data"):
+        os.mkdir("data")
     processes: list[subprocess.Popen[bytes]] = []
     num_processes = int(sys.argv[1]) if len(sys.argv) > 1 else get_num_cores()
     for i, j in pair_iterator():
