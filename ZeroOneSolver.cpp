@@ -1,10 +1,11 @@
-#include <cstdint>  // for std::intNN_t, std::intmax_t
-#include <cstdlib>  // for std::size_t, std::strtoull, std::exit
-#include <iostream> // for std::ostream, std::cout, std::cerr, std::endl
-#include <optional> // for std::optional, std::make_optional, std::nullopt
-#include <string>   // for std::string
-#include <utility>  // for std::pair, std::make_pair, std::move
-#include <vector>   // for std::vector
+#include <algorithm> // for std::sort, std::unique
+#include <cstdint>   // for std::intNN_t, std::intmax_t
+#include <cstdlib>   // for std::size_t, std::strtoull, std::exit
+#include <iostream>  // for std::ostream, std::cout, std::cerr, std::endl
+#include <optional>  // for std::optional, std::make_optional, std::nullopt
+#include <string>    // for std::string
+#include <utility>   // for std::pair, std::make_pair, std::move
+#include <vector>    // for std::vector
 
 
 using index_t = std::uint8_t;
@@ -738,6 +739,8 @@ static System remove_constant_terms(const System &system, bool verbose) {
         }
     }
 
+    System result = system.apply(transformation);
+
     if (verbose) {
         if (used.size() == 0) {
             std::cerr << "ERROR: Found no constant terms to remove."
@@ -767,19 +770,37 @@ static System remove_constant_terms(const System &system, bool verbose) {
             }
             std::cout << "we may conclude that $";
         }
+        std::sort(
+            transformation.zeroed_ps.begin(), transformation.zeroed_ps.end()
+        );
+        transformation.zeroed_ps.erase(
+            std::unique(
+                transformation.zeroed_ps.begin(), transformation.zeroed_ps.end()
+            ),
+            transformation.zeroed_ps.end()
+        );
+        std::sort(
+            transformation.zeroed_qs.begin(), transformation.zeroed_qs.end()
+        );
+        transformation.zeroed_qs.erase(
+            std::unique(
+                transformation.zeroed_qs.begin(), transformation.zeroed_qs.end()
+            ),
+            transformation.zeroed_qs.end()
+        );
         for (index_t p_index : transformation.zeroed_ps) {
             std::cout << "p_{" << static_cast<std::intmax_t>(p_index) << "} = ";
         }
         for (index_t q_index : transformation.zeroed_qs) {
             std::cout << "q_{" << static_cast<std::intmax_t>(q_index) << "} = ";
         }
-        for (const Term &term : transformation.zeroed_terms) {
-            std::cout << term << " = ";
+        if (!result.is_empty()) {
+            for (const Term &term : transformation.zeroed_terms) {
+                std::cout << term << " = ";
+            }
         }
         std::cout << "0$.";
     }
-
-    System result = system.apply(transformation);
 
     if (verbose) {
         if (result.is_empty()) {
