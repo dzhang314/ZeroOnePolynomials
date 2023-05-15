@@ -814,8 +814,8 @@ static std::optional<System> simplify(const System &system, bool verbose) {
 
     if (system.is_trivial()) {
         if (verbose) {
-            std::cout << "It is trivial to verify that this system of equations"
-                         " only admits $\\{0, 1\\}$-valued solutions."
+            std::cout << "Every variable in this system of equations is"
+                         " directly constrained to values in $\\{0, 1\\}$."
                       << std::endl;
         }
         return std::nullopt;
@@ -825,66 +825,79 @@ static std::optional<System> simplify(const System &system, bool verbose) {
         if (equation.size() == 1) {
             const Term term = equation.front();
             if (term.is_quadratic()) {
-                const System next =
-                    system.set_p_one(term.p_index).set_q_one(term.q_index);
-                if (next.is_empty()) {
-                    if (verbose) {
-                        std::cout << "It is trivial to verify that"
-                                     " this system of equations only"
-                                     " admits $\\{0, 1\\}$-valued solutions."
-                                  << std::endl;
-                    }
-                    return std::nullopt;
-                }
                 if (verbose) {
                     std::cout << "From the equation $" << equation
                               << " = 1$, we may conclude that $p_{"
                               << static_cast<std::intmax_t>(term.p_index)
                               << "} = 1$ and $q_{"
                               << static_cast<std::intmax_t>(term.q_index)
-                              << "} = 1$. Performing these substitutions"
-                                 " yields the following system of equations:\n"
-                              << next << std::endl;
+                              << "} = 1$.";
                 }
-                return simplify(next, verbose);
+                const System next =
+                    system.set_p_one(term.p_index).set_q_one(term.q_index);
+                if (next.is_empty()) {
+                    if (verbose) {
+                        std::cout << " After performing these substitutions,"
+                                     " it is straightforward to verify that"
+                                     " the resulting system of equations only"
+                                     " admits $\\{0, 1\\}$-valued solutions."
+                                  << std::endl;
+                    }
+                    return std::nullopt;
+                } else {
+                    if (verbose) {
+                        std::cout << " Performing these substitutions yields"
+                                     " the following system of equations:\n"
+                                  << next << std::endl;
+                    }
+                    return simplify(next, verbose);
+                }
             } else if (term.has_p()) {
                 const System next = system.set_p_one(term.p_index);
                 if (next.is_empty()) {
                     if (verbose) {
-                        std::cout << "It is trivial to verify that"
-                                     " this system of equations only"
-                                     " admits $\\{0, 1\\}$-valued solutions."
+                        std::cout << "After performing the substitution $p_{"
+                                  << static_cast<std::intmax_t>(term.p_index)
+                                  << "} = 1$, it is straightforward to verify"
+                                     " that the resulting system of equations"
+                                     " only admits $\\{0, 1\\}$-valued"
+                                     " solutions."
                                   << std::endl;
                     }
                     return std::nullopt;
+                } else {
+                    if (verbose) {
+                        std::cout << "Performing the substitution $p_{"
+                                  << static_cast<std::intmax_t>(term.p_index)
+                                  << "} = 1$ yields the following system of "
+                                     "equations:\n"
+                                  << next << std::endl;
+                    }
+                    return simplify(next, verbose);
                 }
-                if (verbose) {
-                    std::cout
-                        << "Performing the substitution $p_{"
-                        << static_cast<std::intmax_t>(term.p_index)
-                        << "} = 1$ yields the following system of equations:\n"
-                        << next << std::endl;
-                }
-                return simplify(next, verbose);
             } else if (term.has_q()) {
                 const System next = system.set_q_one(term.q_index);
                 if (next.is_empty()) {
                     if (verbose) {
-                        std::cout << "It is trivial to verify that"
-                                     " this system of equations only"
-                                     " admits $\\{0, 1\\}$-valued solutions."
+                        std::cout << "After performing the substitution $q_{"
+                                  << static_cast<std::intmax_t>(term.q_index)
+                                  << "} = 1$, it is straightforward to verify"
+                                     " that the resulting system of equations"
+                                     " only admits $\\{0, 1\\}$-valued"
+                                     " solutions."
                                   << std::endl;
                     }
                     return std::nullopt;
+                } else {
+                    if (verbose) {
+                        std::cout << "Performing the substitution $q_{"
+                                  << static_cast<std::intmax_t>(term.q_index)
+                                  << "} = 1$ yields the following system of "
+                                     "equations:\n"
+                                  << next << std::endl;
+                    }
+                    return simplify(next, verbose);
                 }
-                if (verbose) {
-                    std::cout
-                        << "Performing the substitution $q_{"
-                        << static_cast<std::intmax_t>(term.q_index)
-                        << "} = 1$ yields the following system of equations:\n"
-                        << next << std::endl;
-                }
-                return simplify(next, verbose);
             }
         }
     }
