@@ -27,7 +27,7 @@ def equation_system_iterator(filename: str):
 def reduced_equation_system_iterator(k: int):
     return itertools.chain(
         *[
-            equation_system_iterator(f"data/ReducedEquations_{i:04}_{j:04}.txt")
+            equation_system_iterator(f"data/ZeroOneEquations_{i:04}_{j:04}.txt")
             for i, j in pair_iterator(k)
         ]
     )
@@ -135,7 +135,7 @@ def main():
     seen = {}
     for k in itertools.count():
         for i, j in pair_iterator(k):
-            if not os.path.isfile(f"data/ReducedEquations_{i:04}_{j:04}.txt"):
+            if not os.path.isfile(f"data/ZeroOneEquations_{i:04}_{j:04}.txt"):
                 print("Files for degree", k, "are not yet computed.")
                 return
         file_name = f"data/CanonizedEquations_{k:04}.txt"
