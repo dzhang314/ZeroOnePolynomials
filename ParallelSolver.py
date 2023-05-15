@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import io
 import itertools
 import os
 import subprocess
@@ -24,23 +25,39 @@ def get_num_cores() -> int:
 def main():
     if not os.path.isdir("data"):
         os.mkdir("data")
-    processes: list[subprocess.Popen[bytes]] = []
+    processes: list[tuple[subprocess.Popen[bytes], io.TextIOWrapper, str, str]] = []
     num_processes = int(sys.argv[1]) if len(sys.argv) > 1 else get_num_cores()
     for i, j in pair_iterator():
-        filename = f"data/ReducedEquations_{i:04}_{j:04}.txt"
+        file_name = f"data/ZeroOneEquations_{i:04}_{j:04}.txt"
         # if this data file has not already been computed...
-        if os.path.isfile(filename):
-            print(filename, "already computed.")
+        if os.path.isfile(file_name):
+            print(file_name, "already computed.")
         else:
             # if we have hit the process limit, wait for a process to finish
             while len(processes) >= num_processes:
                 for k in range(len(processes)):
-                    if processes[k].poll() is not None:
+                    return_code = processes[k][0].poll()
+                    if return_code is not None:
+                        _, file, src, dst = processes[k]
+                        if return_code == 0:
+                            print("Finished computation of", dst + ".")
+                        else:
+                            print("ERROR: Process", dst, "returned non-zero exit code.")
                         del processes[k]
+                        file.close()
+                        os.rename(src, dst)
                         break
             # now that a slot is available, start a process to compute this file
+            temp_name = file_name + ".temp"
+            file = open(temp_name, "w+")
+            print("Starting computation of", file_name + ".")
             processes.append(
-                subprocess.Popen(["./EquationReducer", str(i), str(j), filename])
+                (
+                    subprocess.Popen(["./ZeroOneSolver", str(i), str(j)], stdout=file),
+                    file,
+                    temp_name,
+                    file_name,
+                )
             )
 
 
