@@ -1121,7 +1121,7 @@ int main(int argc, char **argv) {
         std::cout
             << "\\documentclass{article}\n\n"
             << "\\usepackage{amsmath}\n"
-            << "\\usepackage[margin=0.5in]{geometry}\n"
+            << "\\usepackage[margin=0.5in, includefoot]{geometry}\n"
             << "\\usepackage{parskip}\n\n"
             << "\\begin{document}\n\n"
             << "\\textbf{Theorem:} The 0--1 Polynomial Conjecture holds when"
