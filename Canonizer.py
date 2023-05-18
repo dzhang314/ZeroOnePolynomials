@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 
-import itertools
-import os
+from collections.abc import Iterator
+from itertools import chain, count
+from os.path import isfile
+from subprocess import run
+from tempfile import NamedTemporaryFile
 
 
-def pair_iterator(k: int):
-    for j in range(k + 1):
-        i = k - j
-        if i > j > 0:
-            yield (i, j)
-
-
-def equation_system_iterator(filename: str):
+def line_block_iterator(filename: str) -> Iterator[list[str]]:
     with open(filename) as f:
         result: list[str] = []
         for line in f:
@@ -24,10 +20,32 @@ def equation_system_iterator(filename: str):
         assert not result
 
 
-def reduced_equation_system_iterator(k: int):
-    return itertools.chain(
+def pair_iterator(k: int) -> Iterator[tuple[int, int]]:
+    for j in range(k + 1):
+        i = k - j
+        if i > j > 0:
+            yield (i, j)
+
+
+def files_available(k: int) -> bool:
+    for i, j in pair_iterator(k):
+        if not isfile(f"data/ZeroOneEquations_{i:04}_{j:04}.txt"):
+            return False
+    return True
+
+
+def count_available() -> int:
+    for k in count():
+        if not files_available(k):
+            return k - 1
+    assert False  # unreachable
+
+
+def equation_system_iterator(k: int) -> Iterator[list[str]]:
+    assert files_available(k)
+    return chain(
         *[
-            equation_system_iterator(f"data/ZeroOneEquations_{i:04}_{j:04}.txt")
+            line_block_iterator(f"data/ZeroOneEquations_{i:04}_{j:04}.txt")
             for i, j in pair_iterator(k)
         ]
     )
@@ -71,7 +89,7 @@ def sort_equation_system(system: System) -> System:
     return tuple(equation for _, equation in sorted(tagged_equations))
 
 
-def canonize_variables(system: System) -> System:
+def rename_variables(system: System) -> System:
     new_variables: dict[Variable, Variable] = {}
     for equation in system:
         for term in equation:
@@ -82,6 +100,26 @@ def canonize_variables(system: System) -> System:
         tuple(tuple(new_variables[var] for var in term) for term in equation)
         for equation in system
     )
+
+
+def canonize(system: System) -> System:
+    system = sort_equation_system(rename_variables(sort_equation_system(system)))
+    while True:
+        next_system = sort_equation_system(rename_variables(system))
+        if next_system == system:
+            return system
+        else:
+            system = next_system
+
+
+def canonized_equation_system_iterator(k_max: int) -> Iterator[System]:
+    seen: set[System] = set()
+    for k in range(k_max + 1):
+        for system in equation_system_iterator(k):
+            canonized = canonize(system_from_strs(system))
+            if canonized not in seen:
+                yield canonized
+                seen.add(canonized)
 
 
 def signature(system: System) -> Signature:
@@ -99,59 +137,68 @@ def signature(system: System) -> Signature:
     return tuple(sorted(result))
 
 
-SUBSCRIPT_TABLE = str.maketrans(
-    "0123456789", "\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089"
-)
+# SUBSCRIPT_TABLE = str.maketrans(
+#     "0123456789", "\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089"
+# )
 
 
-def pretty_format(system: System) -> str:
-    return (
-        "{"
-        + ", ".join(
-            " + ".join(
-                "*".join(
-                    prefix + str(index).translate(SUBSCRIPT_TABLE)
-                    for prefix, index in term
-                )
-                for term in equation
-            )
-            for equation in system
-        )
-        + "}"
+def macaulay_file(system: System) -> str:
+    vars: list[Variable] = sorted(
+        set(var for equation in system for term in equation for var in term)
     )
+    var_list: str = ", ".join(f"{prefix}_{index}" for prefix, index in vars)
+    equation_list: str = ", ".join(
+        " + ".join(
+            "*".join(f"{prefix}_{index}" for prefix, index in term) for term in equation
+        )
+        + " - 1"
+        for equation in system
+    )
+    return f"R = QQ[{var_list}]\nI = ideal({equation_list})\nprint(1 % I)\n"
 
 
-def canonized_fixed_point(system: System):
-    system = sort_equation_system(canonize_variables(sort_equation_system(system)))
-    while True:
-        next_system = sort_equation_system(canonize_variables(system))
-        if next_system == system:
-            return system
-        else:
-            system = next_system
+def verify_system(system: System) -> bool:
+    with NamedTemporaryFile() as temp:
+        temp.write(macaulay_file(system).encode("utf-8"))
+        temp.flush()
+        process = run(["M2", "--script", temp.name], check=True, capture_output=True)
+        correct_stdout = b"0\n"
+        correct_stderr = b""
+        if (process.stdout == correct_stdout) and (process.stderr == correct_stderr):
+            return True
+    print("FOUND COUNTEREXAMPLE:", system)
+    return False
+
+
+def verify_block(block: list[System]) -> bool:
+    with NamedTemporaryFile() as temp:
+        for system in block:
+            temp.write(macaulay_file(system).encode("utf-8"))
+        temp.flush()
+        process = run(["M2", "--script", temp.name], check=True, capture_output=True)
+        correct_stdout = b"0\n" * len(block)
+        correct_stderr = b""
+        if (process.stdout == correct_stdout) and (process.stderr == correct_stderr):
+            return True
+    for system in block:
+        if not verify_system(system):
+            return False
+    assert False  # unreachable
 
 
 def main():
-    seen = {}
-    for k in itertools.count():
-        for i, j in pair_iterator(k):
-            if not os.path.isfile(f"data/ZeroOneEquations_{i:04}_{j:04}.txt"):
-                print("Files for degree", k, "are not yet computed.")
-                return
-        file_name = f"data/CanonizedEquations_{k:04}.txt"
-        temp_name = file_name + ".temp"
-        with open(temp_name, "w+") as f:
-            for system in reduced_equation_system_iterator(k):
-                system = canonized_fixed_point(system_from_strs(system))
-                if system not in seen:
-                    seen[system] = True
-                    f.write(pretty_format(system) + "\n")
-        os.rename(temp_name, file_name)
-        print(
-            "Computed canonized equations of degree",
-            f"{k} and saved to file {file_name}.",
-            flush=True,
-        )
+    k_max: int = count_available()
+    print("Files for degree <=", k_max, "are available.")
+    count: int = 0
+    block: list[System] = []
+    for system in canonized_equation_system_iterator(k_max):
+        if len(block) >= 500:
+            verify_block(block)
+            count += len(block)
+            print("Verified", count, "systems.")
+            block.clear()
+        block.append(system)
+    verify_block(block)
 
 
 if __name__ == "__main__":
