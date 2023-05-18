@@ -1,4 +1,5 @@
 /.vscode/
+/data/CanonizedEquations_*.txt
 /data/ZeroOneEquations_*_*.txt
 /data/*.temp
 /proofs/
