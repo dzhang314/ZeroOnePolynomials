@@ -1,6 +1,0 @@
-{x₁ + x₂, x₃ + x₄, x₅ + x₆, x₇ + x₈, x₁ + x₃*x₄, x₃ + x₅*x₈, x₇ + x₂*x₉, x₂ + x₉ + x₄*x₆, x₄ + x₆ + x₇*x₈, x₅ + x₈ + x₁*x₂, x₁*x₄ + x₂*x₃, x₁*x₈ + x₂*x₅, x₂*x₆ + x₄*x₉, x₂*x₇ + x₈*x₉, x₄*x₇ + x₆*x₈, x₉ + x₃*x₈ + x₄*x₅}
-{x₁ + x₂, x₃ + x₄, x₄ + x₅, x₅ + x₆, x₁ + x₃*x₄, x₃ + x₂*x₇, x₆ + x₁*x₂, x₇ + x₂*x₆, x₈ + x₄*x₆, x₂ + x₈ + x₄*x₅, x₁*x₄ + x₂*x₃, x₂*x₈ + x₄*x₇, x₇ + x₂*x₅ + x₄*x₈}
-{x₁ + x₂, x₁ + x₃, x₃ + x₄, x₅ + x₆, x₂ + x₅*x₆, x₄ + x₆*x₇, x₅ + x₃*x₄, x₇ + x₂*x₆, x₈ + x₂*x₃, x₆ + x₈ + x₁*x₃, x₃*x₅ + x₄*x₆, x₃*x₇ + x₆*x₈, x₇ + x₁*x₆ + x₃*x₈}
-{x₁ + x₂, x₃ + x₄, x₅ + x₆, x₇ + x₈, x₁ + x₈*x₉, x₅ + x₂*x₄, x₇ + x₅*x₆, x₂ + x₄ + x₇*x₈, x₃ + x₆ + x₁*x₂, x₈ + x₉ + x₃*x₆, x₁*x₆ + x₂*x₃, x₁*x₈ + x₂*x₉, x₂*x₇ + x₄*x₈, x₃*x₈ + x₆*x₉, x₅*x₈ + x₆*x₇, x₉ + x₂*x₅ + x₄*x₆}
-{x₁ + x₂, x₂ + x₃, x₂ + x₄, x₃ + x₅, x₃ + x₆, x₁ + x₃*x₄, x₄ + x₃*x₇, x₅ + x₂*x₆, x₆ + x₂*x₄, x₇ + x₁*x₂, x₇ + x₃*x₆, x₁*x₃ + x₂*x₅, x₂*x₇ + x₃*x₅}
-{x₁ + x₂, x₂ + x₃, x₂ + x₄, x₃ + x₅, x₃ + x₆, x₁ + x₃*x₅, x₄ + x₁*x₃, x₅ + x₂*x₇, x₆ + x₂*x₅, x₇ + x₁*x₂, x₇ + x₃*x₆, x₂*x₄ + x₃*x₇, x₂*x₆ + x₃*x₄}

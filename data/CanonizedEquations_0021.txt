@@ -1,2 +1,0 @@
-{x₁ + x₂, x₃ + x₄, x₅ + x₆, x₁ + x₇ + x₃*x₄, x₂ + x₇ + x₄*x₈, x₃ + x₈ + x₆*x₉, x₄ + x₈ + x₅*x₆, x₅ + x₉ + x₂*x₇, x₆ + x₉ + x₁*x₂, x₁*x₄ + x₂*x₃, x₁*x₆ + x₂*x₉, x₂*x₅ + x₆*x₇, x₂*x₈ + x₄*x₇, x₃*x₆ + x₄*x₉, x₄*x₅ + x₆*x₈}
-{x₁ + x₂, x₃ + x₄, x₅ + x₆, x₁ + x₇ + x₆*x₈, x₂ + x₇ + x₅*x₆, x₃ + x₉ + x₂*x₇, x₄ + x₉ + x₁*x₂, x₅ + x₈ + x₃*x₄, x₆ + x₈ + x₄*x₉, x₁*x₄ + x₂*x₉, x₁*x₆ + x₂*x₈, x₂*x₃ + x₄*x₇, x₂*x₅ + x₆*x₇, x₃*x₆ + x₄*x₅, x₄*x₈ + x₆*x₉}
