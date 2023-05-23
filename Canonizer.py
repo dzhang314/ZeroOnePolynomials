@@ -3,8 +3,6 @@
 from collections.abc import Iterator
 from itertools import chain, count
 from os.path import isfile
-from subprocess import run
-from tempfile import NamedTemporaryFile
 
 
 def line_block_iterator(filename: str) -> Iterator[list[str]]:
@@ -112,13 +110,15 @@ def canonize(system: System) -> System:
             system = next_system
 
 
-def canonized_equation_system_iterator(k_max: int) -> Iterator[System]:
+def canonized_equation_system_iterator(
+    k_max: int,
+) -> Iterator[tuple[System, list[str]]]:
     seen: set[System] = set()
     for k in range(k_max + 1):
         for system in equation_system_iterator(k):
             canonized = canonize(system_from_strs(system))
             if canonized not in seen:
-                yield canonized
+                yield (canonized, system)
                 seen.add(canonized)
 
 
@@ -137,14 +137,10 @@ def signature(system: System) -> Signature:
     return tuple(sorted(result))
 
 
-# SUBSCRIPT_TABLE = str.maketrans(
-#     "0123456789", "\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089"
-# )
-
-
 def macaulay_file(system: System) -> str:
     vars: list[Variable] = sorted(
-        set(var for equation in system for term in equation for var in term)
+        set(var for equation in system for term in equation for var in term),
+        reverse=True,
     )
     var_list: str = ", ".join(f"{prefix}_{index}" for prefix, index in vars)
     equation_list: str = ", ".join(
@@ -154,51 +150,28 @@ def macaulay_file(system: System) -> str:
         + " - 1"
         for equation in system
     )
-    return f"R = QQ[{var_list}]\nI = ideal({equation_list})\nprint(1 % I)\n"
+    return f"R = QQ[{var_list}, MonomialOrder => GLex]\nI = ideal({equation_list})\nB = gb(I)\nprint(1 % B)\n"
 
 
-def verify_system(system: System) -> bool:
-    with NamedTemporaryFile() as temp:
-        temp.write(macaulay_file(system).encode("utf-8"))
-        temp.flush()
-        process = run(["M2", "--script", temp.name], check=True, capture_output=True)
-        correct_stdout = b"0\n"
-        correct_stderr = b""
-        if (process.stdout == correct_stdout) and (process.stderr == correct_stderr):
-            return True
-    print("FOUND COUNTEREXAMPLE:", system)
-    return False
-
-
-def verify_block(block: list[System]) -> bool:
-    with NamedTemporaryFile() as temp:
-        for system in block:
-            temp.write(macaulay_file(system).encode("utf-8"))
-        temp.flush()
-        process = run(["M2", "--script", temp.name], check=True, capture_output=True)
-        correct_stdout = b"0\n" * len(block)
-        correct_stderr = b""
-        if (process.stdout == correct_stdout) and (process.stderr == correct_stderr):
-            return True
-    for system in block:
-        if not verify_system(system):
-            return False
-    assert False  # unreachable
+def write_block_file(block: list[tuple[System, list[str]]], index: int):
+    with open(f"data/CanonizedEquationBlock_{index:04}.m2", "w+") as f:
+        for system, source in block:
+            f.writelines(f"-- {line}\n" for line in source)
+            f.write(macaulay_file(system))
 
 
 def main():
     k_max: int = count_available()
     print("Files for degree <=", k_max, "are available.")
-    count: int = 0
-    block: list[System] = []
-    for system in canonized_equation_system_iterator(k_max):
-        if len(block) >= 500:
-            verify_block(block)
-            count += len(block)
-            print("Verified", count, "systems.")
+    block: list[tuple[System, list[str]]] = []
+    count = 0
+    for system, source in canonized_equation_system_iterator(k_max):
+        if len(block) >= 100:
+            write_block_file(block, count)
             block.clear()
-        block.append(system)
-    verify_block(block)
+            count += 1
+        block.append((system, source))
+    write_block_file(block, count)
 
 
 if __name__ == "__main__":
