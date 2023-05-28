@@ -320,6 +320,53 @@ struct System {
     }
 
 
+    constexpr bool constrains_p(variable_index_t p_index) const noexcept {
+        for (const Term &term : zeros) {
+            if (term.p_index == p_index) { return true; }
+        }
+        for (const Polynomial &poly : ones) {
+            for (const Term &term : poly) {
+                if (term.p_index == p_index) { return true; }
+            }
+        }
+        for (const Polynomial &poly : unknown) {
+            for (const Term &term : poly) {
+                if (term.p_index == p_index) { return true; }
+            }
+        }
+        return false;
+    }
+
+
+    constexpr bool constrains_q(variable_index_t q_index) const noexcept {
+        for (const Term &term : zeros) {
+            if (term.q_index == q_index) { return true; }
+        }
+        for (const Polynomial &poly : ones) {
+            for (const Term &term : poly) {
+                if (term.q_index == q_index) { return true; }
+            }
+        }
+        for (const Polynomial &poly : unknown) {
+            for (const Term &term : poly) {
+                if (term.q_index == q_index) { return true; }
+            }
+        }
+        return false;
+    }
+
+
+    constexpr bool has_free_variable() const noexcept {
+        for (const variable_index_t &p_index : active_ps) {
+            if (!constrains_p(p_index)) { return true; }
+        }
+        for (const variable_index_t &q_index : active_qs) {
+            if (!constrains_q(q_index)) { return true; }
+        }
+        return false;
+    }
+
+
     constexpr Term find_unknown_variable() const noexcept {
         constexpr variable_index_t ZERO = static_cast<variable_index_t>(0);
         for (const Polynomial &poly : unknown) {

@@ -275,12 +275,20 @@ void analyze(std::vector<bool> &case_id, const System &system) {
                     " that this system of equations has no solutions."
                 );
             } else if constexpr (mode == PrintMode::PLAIN_TEXT) {
+                if (simplified->has_free_variable()) {
+                    simplified->print_active_variables_plain_text();
+                    std::putchar('\n');
+                }
                 for (const Polynomial &poly : simplified->ones) {
                     poly.print_plain_text();
                     std::putchar('\n');
                 }
                 std::putchar('\n');
             } else if constexpr (mode == PrintMode::WOLFRAM) {
+                if (simplified->has_free_variable()) {
+                    simplified->print_active_variables_wolfram();
+                    std::putchar('\n');
+                }
                 for (const Polynomial &poly : simplified->ones) {
                     poly.print_wolfram();
                     std::putchar('\n');
