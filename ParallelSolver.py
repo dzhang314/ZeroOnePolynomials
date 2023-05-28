@@ -58,7 +58,9 @@ def main():
             print("Starting computation of", file_name + ".")
             processes.append(
                 (
-                    subprocess.Popen(["./ZeroOneSolver", str(i), str(j)], stdout=file),
+                    subprocess.Popen(
+                        ["bin/ZeroOneSolver", str(i), str(j), "--paranoid"], stdout=file
+                    ),
                     file,
                     temp_name,
                     file_name,
