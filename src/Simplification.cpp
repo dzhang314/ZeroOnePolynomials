@@ -191,34 +191,21 @@ ZeroOneSolver::simplify(const System &system) {
             }
         }
         std::fputs("$, we may conclude that $", stdout);
-        sort_unique(sub.zeroed_ps);
-        for (const variable_index_t &p_index : sub.zeroed_ps) {
-            std::printf("p_{%d} = ", p_index);
-        }
-        sort_unique(sub.zeroed_qs);
-        for (const variable_index_t &q_index : sub.zeroed_qs) {
-            std::printf("q_{%d} = ", q_index);
-        }
-        if (!result.is_empty()) {
-            for (const Term &term : sub.zeroed_terms) {
-                std::printf("p_{%d} q_{%d} = ", term.p_index, term.q_index);
-            }
-        }
-        std::fputs("0$.", stdout);
-    }
-
-    if (result.is_empty()) {
-        if constexpr (verbose) {
-            std::puts(" This is the unique solution"
+        if (result.is_empty()) {
+            sub.print_variables_latex();
+            std::puts("$. This is the unique solution"
                       " of this system of equations.");
-        }
-        return std::nullopt;
-    } else {
-        if constexpr (verbose) {
-            std::puts(" This simplifies the preceding"
+        } else {
+            sub.print_latex();
+            std::puts("$. This simplifies the preceding"
                       " system of equations to the following:");
             result.print_latex();
         }
+    }
+
+    if (result.is_empty()) {
+        return std::nullopt;
+    } else {
         return simplify<verbose, paranoid>(result);
     }
 }
