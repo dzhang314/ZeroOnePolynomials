@@ -335,6 +335,12 @@ struct System {
     void print_latex() const;
 
 
+    void print_active_variables_plain_text() const;
+
+
+    void print_active_variables_wolfram() const;
+
+
 }; // struct System
 
 

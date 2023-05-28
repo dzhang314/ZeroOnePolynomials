@@ -75,6 +75,12 @@ struct ZeroSubstitution {
     }
 
 
+    void print_latex();
+
+
+    void print_variables_latex();
+
+
 }; // struct ZeroSubstitution
 
 

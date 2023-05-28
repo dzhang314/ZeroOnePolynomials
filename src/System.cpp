@@ -7,14 +7,14 @@ void ZeroOneSolver::System::print_latex() const {
     {
         std::fputs("\\begin{align}", stdout);
         bool first = true;
-        for (variable_index_t p_index : active_ps) {
+        for (const variable_index_t &p_index : active_ps) {
             if (first) {
                 std::fputs(" %", stdout);
                 first = false;
             }
             std::printf(" p_{%d}", p_index);
         }
-        for (variable_index_t q_index : active_qs) {
+        for (const variable_index_t &q_index : active_qs) {
             if (first) {
                 std::fputs(" %", stdout);
                 first = false;
@@ -56,4 +56,46 @@ void ZeroOneSolver::System::print_latex() const {
         }
     }
     std::puts("\n\\end{align*}");
+}
+
+
+void ZeroOneSolver::System::print_active_variables_plain_text() const {
+    bool first = true;
+    for (const variable_index_t &p_index : active_ps) {
+        if (first) {
+            std::printf("p_%d", p_index);
+            first = false;
+        } else {
+            std::printf(", p_%d", p_index);
+        }
+    }
+    for (const variable_index_t &q_index : active_qs) {
+        if (first) {
+            std::printf("q_%d", q_index);
+            first = false;
+        } else {
+            std::printf(", q_%d", q_index);
+        }
+    }
+}
+
+
+void ZeroOneSolver::System::print_active_variables_wolfram() const {
+    bool first = true;
+    for (const variable_index_t &p_index : active_ps) {
+        if (first) {
+            std::printf("p[%d]", p_index);
+            first = false;
+        } else {
+            std::printf(", p[%d]", p_index);
+        }
+    }
+    for (const variable_index_t &q_index : active_qs) {
+        if (first) {
+            std::printf("q[%d]", q_index);
+            first = false;
+        } else {
+            std::printf(", q[%d]", q_index);
+        }
+    }
 }
