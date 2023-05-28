@@ -1,8 +1,8 @@
 /.vscode/
+/bin/
 /data/ZeroOneEquations_*_*.txt
 /data/CanonizedEquationBlock_*.m2
 /data/*.temp
 /legacy/
 /proofs/
-/ZeroOneSolver
 /verified/CanonizedEquationBlock_*.m2
