@@ -89,11 +89,16 @@ def sort_equation_system(system: System) -> System:
 
 def rename_variables(system: System) -> System:
     new_variables: dict[Variable, Variable] = {}
+    indices: dict[str, int] = {}
     for equation in system:
         for term in equation:
-            for var in term:
-                if var not in new_variables:
-                    new_variables[var] = ("x", len(new_variables) + 1)
+            for name, index in term:
+                if (name, index) not in new_variables:
+                    if name in indices:
+                        indices[name] += 1
+                    else:
+                        indices[name] = 1
+                    new_variables[(name, index)] = (name, indices[name])
     return tuple(
         tuple(tuple(new_variables[var] for var in term) for term in equation)
         for equation in system
@@ -137,6 +142,15 @@ def signature(system: System) -> Signature:
     return tuple(sorted(result))
 
 
+def wolfram_string(system: System) -> str:
+    return "\n".join(
+        " + ".join(
+            " ".join(f"{name}[{index}]" for name, index in term) for term in equation
+        )
+        for equation in system
+    )
+
+
 def macaulay_file(system: System) -> str:
     vars: list[Variable] = sorted(
         set(var for equation in system for term in equation for var in term),
@@ -163,15 +177,13 @@ def write_block_file(block: list[tuple[System, list[str]]], index: int):
 def main():
     k_max: int = count_available()
     print("Files for degree <=", k_max, "are available.")
-    block: list[tuple[System, list[str]]] = []
-    count = 0
-    for system, source in canonized_equation_system_iterator(k_max):
-        if len(block) >= 100:
-            write_block_file(block, count)
-            block.clear()
-            count += 1
-        block.append((system, source))
-    write_block_file(block, count)
+    seen: set[System] = set()
+    for k in range(k_max + 1):
+        for system in equation_system_iterator(k):
+            canonized = canonize(system_from_strs(system))
+            if canonized not in seen:
+                seen.add(canonized)
+                print(wolfram_string(canonized), end="\n\n")
 
 
 if __name__ == "__main__":
