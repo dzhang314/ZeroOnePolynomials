@@ -384,7 +384,10 @@ static bool get_paranoia(const std::vector<std::string> &args) {
 
 int main(int argc, char **argv) {
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
     const std::vector<std::string> args(argv, argv + argc);
+#pragma clang diagnostic pop
 
     if (!validate_arguments(args)) {
         std::fprintf(
@@ -411,29 +414,29 @@ int main(int argc, char **argv) {
 
     switch (mode) {
 
-    case PrintMode::PLAIN_TEXT:
-        if (paranoid) {
-            print_systems<PrintMode::PLAIN_TEXT, true>(i, j);
-        } else {
-            print_systems<PrintMode::PLAIN_TEXT, false>(i, j);
-        }
-        break;
+        case PrintMode::PLAIN_TEXT:
+            if (paranoid) {
+                print_systems<PrintMode::PLAIN_TEXT, true>(i, j);
+            } else {
+                print_systems<PrintMode::PLAIN_TEXT, false>(i, j);
+            }
+            break;
 
-    case PrintMode::WOLFRAM:
-        if (paranoid) {
-            print_systems<PrintMode::WOLFRAM, true>(i, j);
-        } else {
-            print_systems<PrintMode::WOLFRAM, false>(i, j);
-        }
-        break;
+        case PrintMode::WOLFRAM:
+            if (paranoid) {
+                print_systems<PrintMode::WOLFRAM, true>(i, j);
+            } else {
+                print_systems<PrintMode::WOLFRAM, false>(i, j);
+            }
+            break;
 
-    case PrintMode::LATEX:
-        if (paranoid) {
-            print_proof<true>(i, j);
-        } else {
-            print_proof<false>(i, j);
-        }
-        break;
+        case PrintMode::LATEX:
+            if (paranoid) {
+                print_proof<true>(i, j);
+            } else {
+                print_proof<false>(i, j);
+            }
+            break;
     }
 
     return EXIT_SUCCESS;
