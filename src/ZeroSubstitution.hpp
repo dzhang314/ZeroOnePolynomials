@@ -62,9 +62,7 @@ struct ZeroSubstitution {
 
 
     constexpr void set_zero(const Polynomial &poly) noexcept {
-        for (const Term &term : poly) {
-            set_zero(term);
-        }
+        for (const Term &term : poly) { set_zero(term); }
     }
 
 
