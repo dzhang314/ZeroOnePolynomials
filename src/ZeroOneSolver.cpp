@@ -346,7 +346,8 @@ void print_systems(variable_index_t i, variable_index_t j) {
 
 static bool validate_arguments(const std::vector<std::string> &args) {
     const std::vector<std::string> VALID_FLAGS = {
-        "--wolfram", "--latex", "--paranoid"};
+        "--wolfram", "--latex", "--paranoid"
+    };
     if (args.size() < 3) { return false; }
     for (const char &c : args[1]) {
         if (!std::isdigit(c)) { return false; }
