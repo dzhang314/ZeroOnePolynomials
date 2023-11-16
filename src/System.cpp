@@ -5,7 +5,7 @@
 
 void ZeroOneSolver::System::print_latex() const {
     {
-        std::fputs("\\begin{align}", stdout);
+        std::fputs("\\begin{align*}", stdout);
         bool first = true;
         for (const variable_index_t &p_index : active_ps) {
             if (first) {
