@@ -3,6 +3,7 @@
 from collections.abc import Iterator
 from itertools import chain, count
 from os.path import isfile
+from sys import stderr
 
 
 def line_block_iterator(filename: str) -> Iterator[list[str]]:
@@ -176,7 +177,7 @@ def write_block_file(block: list[tuple[System, list[str]]], index: int):
 
 def main():
     k_max: int = count_available()
-    print("Files for degree <=", k_max, "are available.")
+    print("Files for degree <=", k_max, "are available.", file=stderr)
     seen: set[System] = set()
     for k in range(k_max + 1):
         for system in equation_system_iterator(k):
