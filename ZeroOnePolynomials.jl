@@ -62,14 +62,18 @@ end
 
 
 function Base.show(io::IO, polynomial::Polynomial{T}) where {T<:Integer}
-    first = true
-    for term in polynomial.terms
-        if first
-            first = false
-        else
-            print(io, " + ")
+    if isempty(polynomial.terms)
+        print(io, '0')
+    else
+        first = true
+        for term in polynomial.terms
+            if first
+                first = false
+            else
+                print(io, " + ")
+            end
+            print(io, term)
         end
-        print(io, term)
     end
     return nothing
 end
@@ -100,8 +104,8 @@ function Base.show(io::IO, system::System{T}) where {T<:Integer}
         end
     end
 
-    lhs_strs = [string(poly) for poly in system.lhs]
-    lhs_maxlen = maximum(length(str) for str in lhs_strs)
+    lhs_strs = string.(system.lhs)
+    lhs_maxlen = maximum(length(s) for s in lhs_strs)
 
     for (i, (lhs_str, rhs)) in enumerate(zip(lhs_strs, system.rhs))
         print(io, lpad(i, 4))
@@ -117,33 +121,27 @@ function Base.show(io::IO, system::System{T}) where {T<:Integer}
     end
 
     for (i, (var, used)) in enumerate(zip(system.ps, used_p))
-        print(io, lpad('p' * string(i), lhs_maxlen + 6))
-        if var == VAR_ZERO
+        if (var == VAR_ZERO) || (var == VAR_ONE)
             @assert !used
-            println(io, " == 0")
-        elseif var == VAR_ONE
-            @assert !used
-            println(io, " == 1")
         elseif var == VAR_ZERO_OR_ONE
             @assert used
+            print(io, lpad('p' * string(i), lhs_maxlen + 6))
             println(io, " == 0 or 1")
         elseif var == VAR_UNKNOWN
+            print(io, lpad('p' * string(i), lhs_maxlen + 6))
             println(io, ifelse(used, " >= 0", " >= 0 (FREE)"))
         end
     end
 
     for (i, (var, used)) in enumerate(zip(system.qs, used_q))
-        print(io, lpad('q' * string(i), lhs_maxlen + 6))
-        if var == VAR_ZERO
+        if (var == VAR_ZERO) || (var == VAR_ONE)
             @assert !used
-            println(io, " == 0")
-        elseif var == VAR_ONE
-            @assert !used
-            println(io, " == 1")
         elseif var == VAR_ZERO_OR_ONE
             @assert used
+            print(io, lpad('q' * string(i), lhs_maxlen + 6))
             println(io, " == 0 or 1")
         elseif var == VAR_UNKNOWN
+            print(io, lpad('q' * string(i), lhs_maxlen + 6))
             println(io, ifelse(used, " >= 0", " >= 0 (FREE)"))
         end
     end
@@ -204,9 +202,8 @@ end
 
 
 function initial_system(m::T, n::T) where {T<:Integer}
-    ZERO = zero(T)
     ONE = one(T)
-    @assert ZERO < m < n
+    @assert zero(T) < m < n
     rhs = [RHS_ZERO_OR_ONE for _ = ONE:m+n-ONE]
     @inbounds rhs[m] = RHS_ONE
     @inbounds rhs[n] = RHS_ONE
@@ -216,6 +213,192 @@ function initial_system(m::T, n::T) where {T<:Integer}
         [initial_polynomial(m, n, k) for k = ONE:m+n-ONE],
         rhs,
     )
+end
+
+
+################################################################################
+
+
+export set_p_zero!, set_q_zero!
+
+
+function set_p_zero!(system::System{T}, p_index::T) where {T<:Integer}
+    @assert system.ps[p_index] != VAR_ONE
+    system.ps[p_index] = VAR_ZERO
+    for polynomial in system.lhs
+        filter!(term -> term.p_index != p_index, polynomial.terms)
+    end
+    return system
+end
+
+
+function set_q_zero!(system::System{T}, q_index::T) where {T<:Integer}
+    @assert system.qs[q_index] != VAR_ONE
+    system.qs[q_index] = VAR_ZERO
+    for polynomial in system.lhs
+        filter!(term -> term.q_index != q_index, polynomial.terms)
+    end
+    return system
+end
+
+
+function set_p_one!(system::System{T}, p_index::T) where {T<:Integer}
+    @assert system.ps[p_index] != VAR_ZERO
+    system.ps[p_index] = VAR_ONE
+    @inbounds for polynomial in system.lhs
+        terms = polynomial.terms
+        @simd ivdep for i = 1:length(polynomial.terms)
+            term = terms[i]
+            p_index = ifelse(term.p_index == p_index, zero(T), term.p_index)
+            q_index = term.q_index
+            terms[i] = Term{T}(p_index, q_index)
+        end
+    end
+    return system
+end
+
+
+function set_q_one!(system::System{T}, q_index::T) where {T<:Integer}
+    @assert system.qs[q_index] != VAR_ZERO
+    system.qs[q_index] = VAR_ONE
+    @inbounds for polynomial in system.lhs
+        terms = polynomial.terms
+        @simd ivdep for i = 1:length(polynomial.terms)
+            term = terms[i]
+            p_index = term.p_index
+            q_index = ifelse(term.q_index == q_index, zero(T), term.q_index)
+            terms[i] = Term{T}(p_index, q_index)
+        end
+    end
+    return system
+end
+
+
+################################################################################
+
+
+function initial_system(m::T, n::T, case_index::UInt64) where {T<:Integer}
+    ONE = one(T)
+    @assert zero(T) < m < n
+    system = initial_system(m, n)
+    set_q_zero!(system, m)
+    set_q_zero!(system, n - m)
+    for j = ONE:m-ONE
+        if iszero(case_index & one(UInt64))
+            set_p_zero!(system, j)
+        else
+            set_q_zero!(system, m - j)
+            set_q_zero!(system, n - j)
+        end
+        case_index >>= one(UInt64)
+    end
+    return system
+end
+
+
+################################################################################
+
+
+export simplify!
+
+function simplify!(system::System{T}) where {T<:Integer}
+
+    @assert length(system.lhs) == length(system.rhs)
+    for (i, (polynomial, rhs)) in enumerate(zip(system.lhs, system.rhs))
+
+        # If an equation has no terms on its left-hand side,
+        # then set its right-hand side to zero.
+        if isempty(polynomial.terms)
+            if rhs == RHS_ONE
+                return false
+            elseif rhs != RHS_ZERO
+                system.rhs[i] = RHS_ZERO
+                return simplify!(system)
+            end
+        end
+
+        # If an equation has only one term on its left-hand side,
+        # and that term is not quadratic, then simplification may be possible.
+        if isone(length(polynomial.terms))
+            term = only(polynomial.terms)
+            p_index = term.p_index
+            q_index = term.q_index
+
+            # If the term on the left-hand side is one,
+            # then set the right-hand side to one.
+            if iszero(p_index) && iszero(q_index)
+                if rhs == RHS_ZERO
+                    return false
+                elseif rhs != RHS_ONE
+                    system.rhs[i] = RHS_ONE
+                    return simplify!(system)
+                end
+            end
+
+            # If the term on the left-hand side is a variable p_i,
+            # then set p_i equal to the right-hand side.
+            if (!iszero(p_index)) && iszero(q_index)
+                p_value = system.ps[p_index]
+                @assert p_value != VAR_ZERO
+                @assert p_value != VAR_ONE
+                if rhs == RHS_ZERO
+                    set_p_zero!(system, p_index)
+                    return simplify!(system)
+                elseif rhs == RHS_ONE
+                    set_p_one!(system, p_index)
+                    return simplify!(system)
+                elseif rhs == RHS_ZERO_OR_ONE
+                    if p_value != VAR_ZERO_OR_ONE
+                        system.ps[p_index] = VAR_ZERO_OR_ONE
+                        return simplify!(system)
+                    end
+                end
+            end
+
+            # Do the same for variables of the form q_i.
+            if iszero(term.p_index) && (!iszero(q_index))
+                q_value = system.qs[q_index]
+                @assert q_value != VAR_ZERO
+                @assert q_value != VAR_ONE
+                if rhs == RHS_ZERO
+                    set_q_zero!(system, q_index)
+                    return simplify!(system)
+                elseif rhs == RHS_ONE
+                    set_q_one!(system, q_index)
+                    return simplify!(system)
+                elseif rhs == RHS_ZERO_OR_ONE
+                    if q_value != VAR_ZERO_OR_ONE
+                        system.qs[q_index] = VAR_ZERO_OR_ONE
+                        return simplify!(system)
+                    end
+                end
+            end
+        end
+
+        # If the term 1 occurs on the left-hand side of an equation,
+        # then its right-hand side must also be one.
+        # We delete the term and set the right-hand side to zero.
+        # If there are multiple such terms, then the system is unsatisfiable.
+        one_index = 0
+        for (j, term) in enumerate(polynomial.terms)
+            if iszero(term.p_index) && iszero(term.q_index)
+                if !iszero(one_index)
+                    return false
+                end
+                one_index = j
+            end
+        end
+        if !iszero(one_index)
+            if rhs == RHS_ZERO
+                return false
+            end
+            system.rhs[i] = RHS_ZERO
+            deleteat!(polynomial.terms, one_index)
+            return simplify!(system)
+        end
+
+    end
+    return true
 end
 
 
