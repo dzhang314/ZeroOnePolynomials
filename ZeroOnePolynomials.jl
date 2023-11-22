@@ -50,6 +50,11 @@ end
 end
 
 
+@inline function is_quadratic(term::Term{T}) where {T<:Integer}
+    return (!iszero(term.p_index)) && (!iszero(term.q_index))
+end
+
+
 function Base.show(io::IO, term::Term{T}) where {T<:Integer}
     p_index = term.p_index
     q_index = term.q_index
@@ -251,7 +256,7 @@ end
 ################################################################################
 
 
-export set_p_zero!, set_q_zero!
+export set_p_zero!, set_q_zero!, set_p_one!, set_q_one!
 
 
 function set_p_zero!(system::System{T}, p_index::T) where {T<:Integer}
@@ -279,11 +284,12 @@ function set_p_one!(system::System{T}, p_index::T) where {T<:Integer}
     system.ps[p_index] = VAR_ONE
     @inbounds for polynomial in system.lhs
         terms = polynomial.terms
-        @simd ivdep for i = 1:length(polynomial.terms)
+        @simd ivdep for i in eachindex(terms)
             term = terms[i]
-            p_index = ifelse(term.p_index == p_index, zero(T), term.p_index)
-            q_index = term.q_index
-            terms[i] = Term{T}(p_index, q_index)
+            terms[i] = Term{T}(
+                ifelse(term.p_index == p_index, zero(T), term.p_index),
+                term.q_index
+            )
         end
     end
     return system
@@ -295,11 +301,12 @@ function set_q_one!(system::System{T}, q_index::T) where {T<:Integer}
     system.qs[q_index] = VAR_ONE
     @inbounds for polynomial in system.lhs
         terms = polynomial.terms
-        @simd ivdep for i = 1:length(polynomial.terms)
+        @simd ivdep for i in eachindex(terms)
             term = terms[i]
-            p_index = term.p_index
-            q_index = ifelse(term.q_index == q_index, zero(T), term.q_index)
-            terms[i] = Term{T}(p_index, q_index)
+            terms[i] = Term{T}(
+                term.p_index,
+                ifelse(term.q_index == q_index, zero(T), term.q_index)
+            )
         end
     end
     return system
@@ -354,6 +361,7 @@ end
 function simplify!(system::System{T}) where {T<:Integer}
 
     @assert length(system.lhs) == length(system.rhs)
+    lone_quadratic_terms = Term{T}[]
     for (i, (polynomial, rhs)) in enumerate(zip(system.lhs, system.rhs))
 
         # If an equation has no terms on its left-hand side,
@@ -423,6 +431,11 @@ function simplify!(system::System{T}) where {T<:Integer}
                     end
                 end
             end
+
+            # Keep track of lone quadratic terms for later use.
+            if is_quadratic(term)
+                push!(lone_quadratic_terms, term)
+            end
         end
 
         # If the term 1 occurs on the left-hand side of an equation,
@@ -474,8 +487,61 @@ function simplify!(system::System{T}) where {T<:Integer}
                 return simplify!(system)
             end
         end
-
     end
+
+    made_change = false
+    for polynomial in system.lhs
+        if length(polynomial.terms) == 2
+            x = polynomial.terms[1]
+            y = polynomial.terms[2]
+            if is_p(x) && is_q(y)
+                p_index = x.p_index
+                q_index = y.q_index
+                term = Term{T}(p_index, q_index)
+                if term in lone_quadratic_terms
+                    p_value = system.ps[p_index]
+                    @assert p_value != VAR_ZERO
+                    @assert p_value != VAR_ONE
+                    q_value = system.qs[q_index]
+                    @assert q_value != VAR_ZERO
+                    @assert q_value != VAR_ONE
+                    if p_value != VAR_ZERO_OR_ONE
+                        system.ps[p_index] = VAR_ZERO_OR_ONE
+                        made_change = true
+                    end
+                    if q_value != VAR_ZERO_OR_ONE
+                        system.qs[q_index] = VAR_ZERO_OR_ONE
+                        made_change = true
+                    end
+                end
+            end
+            if is_p(y) && is_q(x)
+                p_index = y.p_index
+                q_index = x.q_index
+                term = Term{T}(p_index, q_index)
+                if term in lone_quadratic_terms
+                    p_value = system.ps[p_index]
+                    @assert p_value != VAR_ZERO
+                    @assert p_value != VAR_ONE
+                    q_value = system.qs[q_index]
+                    @assert q_value != VAR_ZERO
+                    @assert q_value != VAR_ONE
+                    if p_value != VAR_ZERO_OR_ONE
+                        system.ps[p_index] = VAR_ZERO_OR_ONE
+                        made_change = true
+                    end
+                    if q_value != VAR_ZERO_OR_ONE
+                        system.qs[q_index] = VAR_ZERO_OR_ONE
+                        made_change = true
+                    end
+                end
+            end
+        end
+    end
+    if made_change
+        return simplify!(system)
+    end
+
     return true
 end
 
