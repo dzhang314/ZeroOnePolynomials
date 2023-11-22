@@ -4,10 +4,6 @@ module ZeroOnePolynomials
 ################################################################################
 
 
-export RHS, RHS_ZERO, RHS_ONE, RHS_ZERO_OR_ONE
-export VAR, VAR_ZERO, VAR_ONE, VAR_ZERO_OR_ONE, VAR_UNKNOWN
-
-
 @enum RHS::UInt8 begin
     RHS_ZERO = 0
     RHS_ONE = 1
@@ -24,9 +20,6 @@ end
 
 
 ################################################################################
-
-
-export Term
 
 
 struct Term{T<:Integer}
@@ -81,9 +74,6 @@ end
 ################################################################################
 
 
-export Polynomial
-
-
 struct Polynomial{T<:Integer}
     terms::Vector{Term{T}}
 end
@@ -108,9 +98,6 @@ end
 
 
 ################################################################################
-
-
-export System
 
 
 struct System{T<:Integer}
@@ -256,9 +243,6 @@ end
 ################################################################################
 
 
-export set_p_zero!, set_q_zero!, set_p_one!, set_q_one!
-
-
 function set_p_zero!(system::System{T}, p_index::T) where {T<:Integer}
     @assert system.ps[p_index] != VAR_ONE
     system.ps[p_index] = VAR_ZERO
@@ -288,7 +272,7 @@ function set_p_one!(system::System{T}, p_index::T) where {T<:Integer}
             term = terms[i]
             terms[i] = Term{T}(
                 ifelse(term.p_index == p_index, zero(T), term.p_index),
-                term.q_index
+                term.q_index,
             )
         end
     end
@@ -305,7 +289,28 @@ function set_q_one!(system::System{T}, q_index::T) where {T<:Integer}
             term = terms[i]
             terms[i] = Term{T}(
                 term.p_index,
-                ifelse(term.q_index == q_index, zero(T), term.q_index)
+                ifelse(term.q_index == q_index, zero(T), term.q_index),
+            )
+        end
+    end
+    return system
+end
+
+
+function set_pq_one!(
+    system::System{T}, p_index::T, q_index::T
+) where {T<:Integer}
+    @assert system.ps[p_index] != VAR_ZERO
+    system.ps[p_index] = VAR_ONE
+    @assert system.qs[q_index] != VAR_ZERO
+    system.qs[q_index] = VAR_ONE
+    @inbounds for polynomial in system.lhs
+        terms = polynomial.terms
+        @simd ivdep for i in eachindex(terms)
+            term = terms[i]
+            terms[i] = Term{T}(
+                ifelse(term.p_index == p_index, zero(T), term.p_index),
+                ifelse(term.q_index == q_index, zero(T), term.q_index),
             )
         end
     end
@@ -317,8 +322,8 @@ end
 
 
 function initial_system(m::T, n::T, case_index::UInt64) where {T<:Integer}
-    ONE = one(T)
     @assert zero(T) < m < n
+    ONE = one(T)
     system = initial_system(m, n)
     set_q_zero!(system, m)
     set_q_zero!(system, n - m)
@@ -343,16 +348,12 @@ export simplify!
 
 function is_unknown(system::System{T}, term::Term{T}) where {T<:Integer}
     p_index = term.p_index
-    if !iszero(p_index)
-        if system.ps[p_index] == VAR_UNKNOWN
-            return true
-        end
+    if (!iszero(p_index)) && (system.ps[p_index] == VAR_UNKNOWN)
+        return true
     end
     q_index = term.q_index
-    if !iszero(q_index)
-        if system.qs[q_index] == VAR_UNKNOWN
-            return true
-        end
+    if (!iszero(q_index)) && (system.qs[q_index] == VAR_UNKNOWN)
+        return true
     end
     return false
 end
@@ -376,7 +377,7 @@ function simplify!(system::System{T}) where {T<:Integer}
         end
 
         # If an equation has only one term on its left-hand side,
-        # and that term is not quadratic, then simplification may be possible.
+        # then simplification may be possible.
         if isone(length(polynomial.terms))
             term = only(polynomial.terms)
 
@@ -434,6 +435,10 @@ function simplify!(system::System{T}) where {T<:Integer}
 
             # Keep track of lone quadratic terms for later use.
             if is_quadratic(term)
+                if rhs == RHS_ONE
+                    set_pq_one!(system, term.p_index, term.q_index)
+                    return simplify!(system)
+                end
                 push!(lone_quadratic_terms, term)
             end
         end
@@ -458,6 +463,19 @@ function simplify!(system::System{T}) where {T<:Integer}
             system.rhs[i] = RHS_ZERO
             deleteat!(polynomial.terms, one_index)
             return simplify!(system)
+        end
+
+        if rhs == RHS_ZERO
+            for term in polynomial.terms
+                if is_p(term)
+                    set_p_zero!(system, term.p_index)
+                    return simplify!(system)
+                end
+                if is_q(term)
+                    set_q_zero!(system, term.q_index)
+                    return simplify!(system)
+                end
+            end
         end
 
         # If all terms but one on the left-hand side of an equation have been
@@ -552,18 +570,76 @@ end
 ################################################################################
 
 
-export initial_systems
+export solve
 
 
-function initial_systems(m::T, n::T) where {T<:Integer}
-    result = [
-        initial_system(m, n, case_index)
-        for case_index = UInt64(0):((UInt64(1)<<(m-one(T)))-one(UInt64))
-    ]
-    for system in result
-        @assert simplify!(system)
+function find_case_split!(
+    stack::Vector{System{T}}, system::System{T}
+) where {T<:Integer}
+    for (i, var) in enumerate(system.ps)
+        if var == VAR_ZERO_OR_ONE
+            push!(stack, set_p_one!(deepcopy(system), T(i)))
+            push!(stack, set_p_zero!(system, T(i)))
+            return true
+        end
     end
-    return result
+    for (i, var) in enumerate(system.qs)
+        if var == VAR_ZERO_OR_ONE
+            push!(stack, set_q_one!(deepcopy(system), T(i)))
+            push!(stack, set_q_zero!(system, T(i)))
+            return true
+        end
+    end
+    @assert length(system.lhs) == length(system.rhs)
+    for (polynomial, rhs) in zip(system.lhs, system.rhs)
+        terms = polynomial.terms
+        if (!isempty(terms)) && (rhs == RHS_ZERO)
+            term = first(terms)
+            @assert is_quadratic(term)
+            push!(stack, set_q_zero!(deepcopy(system), term.q_index))
+            push!(stack, set_p_zero!(system, term.p_index))
+            return true
+        end
+        if isone(length(terms))
+            term = only(terms)
+            @assert is_quadratic(term)
+            @assert rhs == RHS_ZERO_OR_ONE
+            push!(stack, set_pq_one!(
+                deepcopy(system), term.p_index, term.q_index
+            ))
+            push!(stack, set_q_zero!(deepcopy(system), term.q_index))
+            push!(stack, set_p_zero!(system, term.p_index))
+            return true
+        end
+    end
+    for (i, rhs) in enumerate(system.rhs)
+        if rhs == RHS_ZERO_OR_ONE
+            one_copy = deepcopy(system)
+            one_copy.rhs[i] = RHS_ONE
+            push!(stack, one_copy)
+            system.rhs[i] = RHS_ZERO
+            push!(stack, system)
+            return true
+        end
+    end
+    return false
+end
+
+
+function solve(system::System{T}) where {T<:Integer}
+    stack = System{T}[deepcopy(system)]
+    leaves = System{T}[]
+    while !isempty(stack)
+        top = pop!(stack)
+        if simplify!(top)
+            if (VAR_UNKNOWN in top.ps) || (VAR_UNKNOWN in top.qs)
+                if !find_case_split!(stack, top)
+                    push!(leaves, top)
+                end
+            end
+        end
+    end
+    return leaves
 end
 
 
