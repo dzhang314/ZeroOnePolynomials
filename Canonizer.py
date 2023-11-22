@@ -20,15 +20,15 @@ def line_block_iterator(filename: str) -> Iterator[list[str]]:
 
 
 def pair_iterator(k: int) -> Iterator[tuple[int, int]]:
-    for j in range(k + 1):
-        i = k - j
-        if i > j > 0:
+    for i in range(k + 1):
+        j = k - i
+        if 0 < i < j:
             yield (i, j)
 
 
 def files_available(k: int) -> bool:
     for i, j in pair_iterator(k):
-        if not isfile(f"data/ZeroOneEquations_{i:04}_{j:04}.txt"):
+        if not isfile(f"data/ZeroOneEquations_{(i+j):04}_{i:04}_{j:04}.txt"):
             return False
     return True
 
@@ -44,7 +44,7 @@ def equation_system_iterator(k: int) -> Iterator[list[str]]:
     assert files_available(k)
     return chain(
         *[
-            line_block_iterator(f"data/ZeroOneEquations_{i:04}_{j:04}.txt")
+            line_block_iterator(f"data/ZeroOneEquations_{(i+j):04}_{i:04}_{j:04}.txt")
             for i, j in pair_iterator(k)
         ]
     )
@@ -58,8 +58,7 @@ Signature = tuple[tuple[int, int], ...]
 
 
 def variable_from_str(var: str) -> Variable:
-    prefix, index = var.split("_")
-    return (prefix, int(index))
+    return (var[0], int(var[1:]))
 
 
 def term_from_str(term: str) -> Term:
