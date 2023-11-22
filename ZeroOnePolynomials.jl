@@ -26,7 +26,7 @@ end
 ################################################################################
 
 
-export Term, Polynomial, System
+export Term
 
 
 struct Term{T<:Integer}
@@ -35,25 +35,48 @@ struct Term{T<:Integer}
 end
 
 
+@inline function Base.isone(term::Term{T}) where {T<:Integer}
+    return iszero(term.p_index) && iszero(term.q_index)
+end
+
+
+@inline function is_p(term::Term{T}) where {T<:Integer}
+    return (!iszero(term.p_index)) && iszero(term.q_index)
+end
+
+
+@inline function is_q(term::Term{T}) where {T<:Integer}
+    return iszero(term.p_index) && (!iszero(term.q_index))
+end
+
+
 function Base.show(io::IO, term::Term{T}) where {T<:Integer}
-    if iszero(term.p_index)
-        if iszero(term.q_index)
+    p_index = term.p_index
+    q_index = term.q_index
+    if iszero(p_index)
+        if iszero(q_index)
             print(io, '1')
         else
             print(io, 'q')
-            print(io, term.q_index)
+            print(io, q_index)
         end
     else
         print(io, 'p')
-        print(io, term.p_index)
-        if !iszero(term.q_index)
+        print(io, p_index)
+        if !iszero(q_index)
             print(io, '*')
             print(io, 'q')
-            print(io, term.q_index)
+            print(io, q_index)
         end
     end
     return nothing
 end
+
+
+################################################################################
+
+
+export Polynomial
 
 
 struct Polynomial{T<:Integer}
@@ -77,6 +100,12 @@ function Base.show(io::IO, polynomial::Polynomial{T}) where {T<:Integer}
     end
     return nothing
 end
+
+
+################################################################################
+
+
+export System
 
 
 struct System{T<:Integer}
@@ -108,6 +137,9 @@ function Base.show(io::IO, system::System{T}) where {T<:Integer}
     lhs_maxlen = maximum(length(s) for s in lhs_strs)
 
     for (i, (lhs_str, rhs)) in enumerate(zip(lhs_strs, system.rhs))
+        if (lhs_str == "0") && (rhs == RHS_ZERO)
+            continue
+        end
         print(io, lpad(i, 4))
         print(io, ": ")
         print(io, lpad(lhs_str, lhs_maxlen))
@@ -321,12 +353,10 @@ function simplify!(system::System{T}) where {T<:Integer}
         # and that term is not quadratic, then simplification may be possible.
         if isone(length(polynomial.terms))
             term = only(polynomial.terms)
-            p_index = term.p_index
-            q_index = term.q_index
 
             # If the term on the left-hand side is one,
             # then set the right-hand side to one.
-            if iszero(p_index) && iszero(q_index)
+            if isone(term)
                 if rhs == RHS_ZERO
                     return false
                 elseif rhs != RHS_ONE
@@ -337,7 +367,8 @@ function simplify!(system::System{T}) where {T<:Integer}
 
             # If the term on the left-hand side is a variable p_i,
             # then set p_i equal to the right-hand side.
-            if (!iszero(p_index)) && iszero(q_index)
+            if is_p(term)
+                p_index = term.p_index
                 p_value = system.ps[p_index]
                 @assert p_value != VAR_ZERO
                 @assert p_value != VAR_ONE
@@ -356,7 +387,8 @@ function simplify!(system::System{T}) where {T<:Integer}
             end
 
             # Do the same for variables of the form q_i.
-            if iszero(term.p_index) && (!iszero(q_index))
+            if is_q(term)
+                q_index = term.q_index
                 q_value = system.qs[q_index]
                 @assert q_value != VAR_ZERO
                 @assert q_value != VAR_ONE
@@ -381,7 +413,7 @@ function simplify!(system::System{T}) where {T<:Integer}
         # If there are multiple such terms, then the system is unsatisfiable.
         one_index = 0
         for (j, term) in enumerate(polynomial.terms)
-            if iszero(term.p_index) && iszero(term.q_index)
+            if isone(term)
                 if !iszero(one_index)
                     return false
                 end
@@ -399,6 +431,24 @@ function simplify!(system::System{T}) where {T<:Integer}
 
     end
     return true
+end
+
+
+################################################################################
+
+
+export initial_systems
+
+
+function initial_systems(m::T, n::T) where {T<:Integer}
+    result = [
+        initial_system(m, n, case_index)
+        for case_index = UInt64(0):((UInt64(1)<<(m-one(T)))-one(UInt64))
+    ]
+    for system in result
+        @assert simplify!(system)
+    end
+    return result
 end
 
 
