@@ -333,6 +333,24 @@ end
 
 export simplify!
 
+
+function is_unknown(system::System{T}, term::Term{T}) where {T<:Integer}
+    p_index = term.p_index
+    if !iszero(p_index)
+        if system.ps[p_index] == VAR_UNKNOWN
+            return true
+        end
+    end
+    q_index = term.q_index
+    if !iszero(q_index)
+        if system.qs[q_index] == VAR_UNKNOWN
+            return true
+        end
+    end
+    return false
+end
+
+
 function simplify!(system::System{T}) where {T<:Integer}
 
     @assert length(system.lhs) == length(system.rhs)
@@ -427,6 +445,34 @@ function simplify!(system::System{T}) where {T<:Integer}
             system.rhs[i] = RHS_ZERO
             deleteat!(polynomial.terms, one_index)
             return simplify!(system)
+        end
+
+        # If all terms but one on the left-hand side of an equation have been
+        # constrained to zero or one, then the same holds for the final term.
+        unknown_index = 0
+        for (j, term) in enumerate(polynomial.terms)
+            if is_unknown(system, term)
+                if !iszero(unknown_index)
+                    unknown_index = 0
+                    break
+                end
+                unknown_index = j
+            end
+        end
+        if !iszero(unknown_index)
+            unknown_term = polynomial.terms[unknown_index]
+            if is_p(unknown_term)
+                p_index = unknown_term.p_index
+                @assert system.ps[p_index] == VAR_UNKNOWN
+                system.ps[p_index] = VAR_ZERO_OR_ONE
+                return simplify!(system)
+            end
+            if is_q(unknown_term)
+                q_index = unknown_term.q_index
+                @assert system.qs[q_index] == VAR_UNKNOWN
+                system.qs[q_index] = VAR_ZERO_OR_ONE
+                return simplify!(system)
+            end
         end
 
     end
