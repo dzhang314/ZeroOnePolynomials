@@ -100,6 +100,9 @@ end
 ################################################################################
 
 
+export System
+
+
 struct System{T<:Integer}
     ps::Vector{VAR}
     qs::Vector{VAR}
