@@ -486,6 +486,9 @@ function simplify!(system::System{T}) where {T<:Integer}
                 system.qs[q_index] = VAR_ZERO_OR_ONE
                 return simplify!(system)
             end
+            if is_quadratic(unknown_term)
+                push!(lone_quadratic_terms, unknown_term)
+            end
         end
     end
 
