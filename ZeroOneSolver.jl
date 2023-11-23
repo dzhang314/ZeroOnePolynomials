@@ -71,13 +71,16 @@ function main()
         for m = 1:((degree-1)>>1)
             n = degree - m
             filename = "data/ZeroOneEquations_$(lpad(m + n, 4, '0'))_$(lpad(m, 4, '0'))_$(lpad(n, 4, '0')).txt"
-            tempname = filename * ".temp"
-            open(tempname, "w+") do io
-                for system in leaf_systems(UInt8, m, n)
-                    print_system(io, system)
+            if !isfile(filename)
+                println("Computing $(filename).")
+                tempname = filename * ".temp"
+                open(tempname, "w+") do io
+                    for system in leaf_systems(UInt8, m, n)
+                        print_system(io, system)
+                    end
                 end
+                mv(tempname, filename)
             end
-            mv(tempname, filename)
             println("Finished computing $(filename).")
         end
     end
