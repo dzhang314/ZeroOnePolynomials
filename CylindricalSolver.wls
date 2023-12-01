@@ -13,7 +13,7 @@ Print["Successfully loaded ", Length[systems], " systems."];
 Do[
 	With[
 		{s = systems[[i]]},
-		If[CylindricalDecomposition[(# == 1)& /@ s, Variables[s]] =!= False,
+		If[CylindricalDecomposition[(# == 1)& /@ s, Variables[s]] === False,
 			Print["Solved system ", i, " of ", Length[systems], "."],
 			Print["FOUND COUNTEREXAMPLE AT SYSTEM ", i, "!"];
 			Break[]
