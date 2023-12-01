@@ -1,46 +1,33 @@
-import io
-import itertools
 import os
 import subprocess
-import sys
-import time
+from collections.abc import Iterator
+from itertools import count
+from time import sleep
+from sys import argv
 
 
-def pair_iterator(degree: int):
+def degree_pair_iterator(degree: int) -> Iterator[tuple[int, int]]:
     for m in range(1, (degree + 1) >> 1):
         n = degree - m
         yield (m, n)
 
 
-def all_pair_iterator(max_degree: int | None):
-    for degree in itertools.count() if max_degree is None else range(max_degree + 1):
-        yield from pair_iterator(degree)
+def max_degree_pair_iterator(max_degree: int | None) -> Iterator[tuple[int, int]]:
+    for degree in count() if max_degree is None else range(max_degree + 1):
+        yield from degree_pair_iterator(degree)
 
 
 def get_num_cores() -> int:
     result = os.cpu_count()
-    if result is None:
-        result = 4  # reasonable guess for number of cores
-    return result - 1  # reserve one process for this program, desktop UI, etc.
+    return 4 if result is None else result
 
 
-def wait_for_process_to_finish(
-    processes: list[tuple[subprocess.Popen[bytes], io.TextIOWrapper, str, str]]
-):
-    while True:
-        for k in range(len(processes)):
-            return_code = processes[k][0].poll()
-            if return_code is not None:
-                _, file, src, dst = processes[k]
-                if return_code == 0:
-                    print("Finished computing", dst + ".")
-                else:
-                    print("ERROR: Process", dst, "returned non-zero exit code.")
-                del processes[k]
-                file.close()
-                os.rename(src, dst)
-                return None
-        time.sleep(0.001)
+def executable_path(m: int, n: int) -> str:
+    return f"bin/ZeroOneSolver-{m+n:04}-{m:04}-{n:04}"
+
+
+def data_file_path(m: int, n: int) -> str:
+    return f"data/ZeroOneEquations-{m+n:04}-{m:04}-{n:04}.txt"
 
 
 def compile(m: int, n: int, output_path: str):
@@ -63,32 +50,54 @@ def compile(m: int, n: int, output_path: str):
     )
 
 
+def wait_for_process_to_finish(
+    processes: list[tuple[subprocess.Popen[bytes], str, str, str]]
+):
+    while True:
+        for k in range(len(processes)):
+            proc, exe, src, dst = processes[k]
+            return_code = proc.poll()
+            if return_code is not None:
+                if return_code == 0:
+                    print("Finished computing", dst + ".")
+                else:
+                    print("ERROR: Process", dst, "returned non-zero exit code.")
+                os.remove(exe)
+                if proc.stdout is not None:
+                    proc.stdout.close()
+                os.rename(src, dst)
+                del processes[k]
+                return None
+        sleep(0.001)
+
+
 def main():
     if not os.path.isdir("bin"):
         os.mkdir("bin")
     if not os.path.isdir("data"):
         os.mkdir("data")
-    processes: list[tuple[subprocess.Popen[bytes], io.TextIOWrapper, str, str]] = []
-    num_processes = int(sys.argv[1]) if len(sys.argv) > 1 else get_num_cores()
+
+    num_processes = int(argv[1]) if len(argv) > 1 else get_num_cores() - 1
     print("Running", num_processes, "parallel processes.")
-    for m, n in all_pair_iterator(int(sys.argv[2]) if len(sys.argv) > 2 else None):
-        data_name = f"data/ZeroOneEquations-{m+n:04}-{m:04}-{n:04}.txt"
-        if os.path.isfile(data_name):
-            print(data_name, "already computed.")
+
+    processes: list[tuple[subprocess.Popen[bytes], str, str, str]] = []
+    for m, n in max_degree_pair_iterator(int(argv[2]) if len(argv) > 2 else None):
+        data_path = data_file_path(m, n)
+        if os.path.isfile(data_path):
+            print(data_path, "already computed.")
         else:
             while len(processes) >= num_processes:
                 wait_for_process_to_finish(processes)
-            binary_name = f"bin/ZeroOneSolver-{m}-{n}"
-            compile(m, n, binary_name)
-            temp_name = data_name + ".temp"
-            temp_file = open(temp_name, "w")
-            print("Computing", data_name + ".")
+            exe_path = executable_path(m, n)
+            compile(m, n, exe_path)
+            temp_path = data_path + ".temp"
+            print("Computing", data_path + ".")
             processes.append(
                 (
-                    subprocess.Popen([f"bin/ZeroOneSolver-{m}-{n}"], stdout=temp_file),
-                    temp_file,
-                    temp_name,
-                    data_name,
+                    subprocess.Popen([exe_path], stdout=open(temp_path, "w")),
+                    exe_path,
+                    temp_path,
+                    data_path,
                 )
             )
     while processes:
