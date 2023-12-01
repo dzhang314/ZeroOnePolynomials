@@ -64,6 +64,8 @@ def compile(m: int, n: int, output_path: str):
 
 
 def main():
+    if not os.path.isdir("bin"):
+        os.mkdir("bin")
     if not os.path.isdir("data"):
         os.mkdir("data")
     processes: list[tuple[subprocess.Popen[bytes], io.TextIOWrapper, str, str]] = []
