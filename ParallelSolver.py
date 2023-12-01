@@ -9,17 +9,32 @@ from sys import argv
 
 
 def degree_pair_iterator(degree: int) -> Iterator[tuple[int, int]]:
+    """
+    Given an integer degree, return an iterator over all pairs
+    of integers (m, n) such that 0 < m < n and m + n == degree.
+    """
     for m in range(1, (degree + 1) >> 1):
         n = degree - m
         yield (m, n)
 
 
 def max_degree_pair_iterator(max_degree: int | None) -> Iterator[tuple[int, int]]:
+    """
+    Given an integer max_degree, return an iterator over all pairs
+    of integers (m, n) such that 0 < m < n and m + n <= max_degree.
+
+    The pairs are returned in increasing order of m + n. If max_degree is
+    None, it is treated as infinity, and an infinite iterator is returned.
+    """
     for degree in count() if max_degree is None else range(max_degree + 1):
         yield from degree_pair_iterator(degree)
 
 
 def get_num_cores() -> int:
+    """
+    Return the number of logical CPU cores in the machine executing this
+    program (or a reasonable guess, 4, if this information is not available.)
+    """
     result = os.cpu_count()
     return 4 if result is None else result
 
