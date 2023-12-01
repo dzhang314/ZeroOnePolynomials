@@ -1,4 +1,4 @@
 /.vscode/
-/bin/
-/data/ZeroOneEquations_*_*.txt
+/bin/ZeroOneSolver-*-*
+/data/ZeroOneEquations-*-*-*.txt
 /data/*.temp
