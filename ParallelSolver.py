@@ -62,7 +62,10 @@ def wait_for_process_to_finish(
                     print("Finished computing", dst + ".")
                 else:
                     print("ERROR: Process", dst, "returned non-zero exit code.")
-                os.remove(exe)
+                if os.path.isfile(exe):
+                    os.remove(exe)
+                if os.path.isfile(exe + ".exe"):
+                    os.remove(exe + ".exe")
                 if proc.stdout is not None:
                     proc.stdout.close()
                 os.rename(src, dst)
