@@ -1,6 +1,6 @@
 #include <bitset>   // for std::bitset
 #include <cstddef>  // for std::size_t
-#include <iostream> // for std::cout, std::cerr, std::endl
+#include <iostream> // for std::cout, std::cerr
 #include <vector>   // for std::vector
 
 #include "ZeroOneSolver.hpp"
@@ -24,6 +24,55 @@ constexpr bool increment(std::bitset<N> &bitset) noexcept {
         }
     }
     return false;
+}
+
+
+template <var_index_t M, var_index_t N>
+void print_leaf_system(const System<M, N> &system) {
+    std::bitset<M - 1> p_used;
+    std::bitset<N - 1> q_used;
+    for (std::size_t e = 0; e < M + N - 1; ++e) {
+        if (system.rhs.get(e) == RHS::ZERO) {
+            for (std::size_t t = 0; t < M + 1; ++t) {
+                assert(system.lhs[e][t] == TERM_ZERO);
+            }
+        } else {
+            assert(system.rhs.get(e) == RHS::ONE);
+            bool first = true;
+            for (std::size_t t = 0; t < M + 1; ++t) {
+                const Term term = system.lhs[e][t];
+                if (term == TERM_ZERO) { continue; }
+                if (term.p_index) { p_used.set(term.p_index - 1); }
+                if (term.q_index) { q_used.set(term.q_index - 1); }
+                if (first) {
+                    first = false;
+                } else {
+                    std::cout << " + ";
+                }
+                std::cout << term;
+            }
+            std::cout << "\n";
+        }
+    }
+    for (std::size_t i = 0; i < M - 1; ++i) {
+        const VAR value = system.p.get(i);
+        if ((value == VAR::ZERO) || (value == VAR::ONE)) {
+            assert(!p_used.test(i));
+        } else {
+            assert(value == VAR::UNKNOWN);
+            if (!p_used[i]) { std::cout << "0 <= p" << (i + 1) << " <= 1\n"; }
+        }
+    }
+    for (std::size_t i = 0; i < N - 1; ++i) {
+        const VAR value = system.q.get(i);
+        if ((value == VAR::ZERO) || (value == VAR::ONE)) {
+            assert(!q_used.test(i));
+        } else {
+            assert(value == VAR::UNKNOWN);
+            if (!q_used[i]) { std::cout << "0 <= q" << (i + 1) << " <= 1\n"; }
+        }
+    }
+    std::cout << "\n";
 }
 
 
@@ -144,7 +193,7 @@ void analyze_case(const std::bitset<M - 1> &case_index) {
             if (system.has_unknown_variable()) {
                 if (!find_case_split<M, N, verbose>(stack, system)) {
                     if constexpr (verbose) { std::cerr << "LEAF SYSTEM\n"; }
-                    std::cout << system << std::endl;
+                    print_leaf_system(system);
                 }
             } else {
                 if constexpr (verbose) { std::cerr << "SOLVED SYSTEM\n"; }
@@ -168,4 +217,4 @@ void analyze() {
 }
 
 
-int main() { analyze<20, 25, true>(); }
+int main() { analyze<16, 25, false>(); }
