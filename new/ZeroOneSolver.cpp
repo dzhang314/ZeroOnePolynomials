@@ -217,4 +217,6 @@ void analyze() {
 }
 
 
-int main() { analyze<16, 25, false>(); }
+int main() {
+    analyze<ZERO_ONE_SOLVER_M, ZERO_ONE_SOLVER_N, ZERO_ONE_SOLVER_VERBOSE>();
+}
