@@ -433,7 +433,7 @@ struct System {
             std::size_t term_index = INVALID_INDEX;
             for (std::size_t t = 0; t < M + 1; ++t) {
                 const Term term = lhs[e][t];
-                if (!is_zero_or_one(term)) {
+                if (is_unknown(term)) {
                     if (term_index != INVALID_INDEX) {
                         term_index = INVALID_INDEX;
                         break;
