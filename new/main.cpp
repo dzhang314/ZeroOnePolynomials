@@ -1,7 +1,7 @@
-#include <bitset>  // for std::bitset
-#include <cstddef> // for std::size_t
-#include <ostream> // for std::ostream
-#include <vector>  // for std::vector
+#include <bitset>   // for std::bitset
+#include <cstddef>  // for std::size_t
+#include <iostream> // for std::cout, std::cerr, std::endl
+#include <vector>   // for std::vector
 
 #include "ZeroOneSolver.hpp"
 
@@ -27,10 +27,7 @@ constexpr bool increment(std::bitset<N> &bitset) noexcept {
 }
 
 
-#include <iostream>
-
-
-template <var_index_t M, var_index_t N>
+template <var_index_t M, var_index_t N, bool verbose>
 bool find_case_split(
     std::vector<System<M, N>> &stack, const System<M, N> &system
 ) {
@@ -39,7 +36,9 @@ bool find_case_split(
 
     for (var_index_t p_index = 1; p_index <= M - 1; ++p_index) {
         if (system.p.get(p_index - 1) == VAR::ZERO_OR_ONE) {
-            std::cout << "SPLIT ON P" << static_cast<int>(p_index) << "\n";
+            if constexpr (verbose) {
+                std::cerr << "SPLIT ON P" << static_cast<int>(p_index) << "\n";
+            }
             stack.push_back(system);
             stack.back().set_p_one(p_index);
             stack.push_back(system);
@@ -50,7 +49,9 @@ bool find_case_split(
 
     for (var_index_t q_index = 1; q_index <= N - 1; ++q_index) {
         if (system.q.get(q_index - 1) == VAR::ZERO_OR_ONE) {
-            std::cout << "SPLIT ON Q" << static_cast<int>(q_index) << "\n";
+            if constexpr (verbose) {
+                std::cerr << "SPLIT ON Q" << static_cast<int>(q_index) << "\n";
+            }
             stack.push_back(system);
             stack.back().set_q_one(q_index);
             stack.push_back(system);
@@ -65,9 +66,12 @@ bool find_case_split(
             for (std::size_t t = 0; t < M + 1; ++t) {
                 const Term term = system.lhs[e][t];
                 if (term != TERM_ZERO) {
-                    std::cout << "SPLIT ON P" << static_cast<int>(term.p_index)
-                              << " * Q" << static_cast<int>(term.q_index)
-                              << " == 0\n";
+                    if constexpr (verbose) {
+                        std::cerr << "SPLIT ON P"
+                                  << static_cast<int>(term.p_index) << " * Q"
+                                  << static_cast<int>(term.q_index)
+                                  << " == 0\n";
+                    }
                     assert(term.p_index);
                     assert(term.q_index);
                     stack.push_back(system);
@@ -91,9 +95,11 @@ bool find_case_split(
             }
             if (term_index != INVALID_INDEX) {
                 const Term term = system.lhs[e][term_index];
-                std::cout << "SPLIT ON P" << static_cast<int>(term.p_index)
-                          << " * Q" << static_cast<int>(term.q_index)
-                          << " == 0 or 1\n";
+                if constexpr (verbose) {
+                    std::cerr << "SPLIT ON P" << static_cast<int>(term.p_index)
+                              << " * Q" << static_cast<int>(term.q_index)
+                              << " == 0 or 1\n";
+                }
                 assert(term != TERM_ZERO);
                 assert(term.p_index);
                 assert(term.q_index);
@@ -111,6 +117,9 @@ bool find_case_split(
 
     for (std::size_t e = 0; e < M + N - 1; ++e) {
         if (system.rhs.get(e) == RHS::ZERO_OR_ONE) {
+            if constexpr (verbose) {
+                std::cerr << "SPLIT ON EQUATION " << e << "\n";
+            }
             stack.push_back(system);
             stack.back().rhs.set(e, RHS::ONE);
             stack.push_back(system);
@@ -123,7 +132,7 @@ bool find_case_split(
 }
 
 
-template <var_index_t M, var_index_t N>
+template <var_index_t M, var_index_t N, bool verbose>
 void analyze_case(const std::bitset<M - 1> &case_index) {
     std::vector<System<M, N>> stack;
     stack.emplace_back();
@@ -133,28 +142,30 @@ void analyze_case(const std::bitset<M - 1> &case_index) {
         stack.pop_back();
         if (system.simplify()) {
             if (system.has_unknown_variable()) {
-                if (!find_case_split(stack, system)) {
-                    std::cout << "LEAF SYSTEM:\n";
-                    std::cout << system;
+                if (!find_case_split<M, N, verbose>(stack, system)) {
+                    if constexpr (verbose) { std::cerr << "LEAF SYSTEM\n"; }
+                    std::cout << system << std::endl;
                 }
             } else {
-                std::cout << "SYSTEM SOLVED\n";
+                if constexpr (verbose) { std::cerr << "SOLVED SYSTEM\n"; }
             }
         } else {
-            std::cout << "INCONSISTENT SYSTEM\n";
+            if constexpr (verbose) { std::cerr << "INCONSISTENT SYSTEM\n"; }
         }
     }
 }
 
 
-template <var_index_t M, var_index_t N>
+template <var_index_t M, var_index_t N, bool verbose>
 void analyze() {
     std::bitset<M - 1> case_index;
     do {
-        std::cout << "ANALYZING CASE " << case_index.to_string() << "\n";
-        analyze_case<M, N>(case_index);
+        if constexpr (verbose) {
+            std::cerr << "ANALYZING CASE " << case_index.to_string() << "\n";
+        }
+        analyze_case<M, N, verbose>(case_index);
     } while (increment(case_index));
 }
 
 
-int main() { analyze<8, 20>(); }
+int main() { analyze<20, 25, true>(); }
