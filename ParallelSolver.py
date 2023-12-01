@@ -48,7 +48,7 @@ def compile(m: int, n: int, output_path: str):
         os.remove(output_path)
     subprocess.run(
         [
-            "clang++",
+            "gcc",
             "-std=c++20",
             "-O3",
             "-march=native",
