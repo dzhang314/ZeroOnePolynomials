@@ -48,7 +48,7 @@ def compile(m: int, n: int, output_path: str):
         os.remove(output_path)
     subprocess.run(
         [
-            "gcc",
+            "g++",
             "-std=c++20",
             "-O3",
             "-march=native",
@@ -70,6 +70,7 @@ def main():
         os.mkdir("data")
     processes: list[tuple[subprocess.Popen[bytes], io.TextIOWrapper, str, str]] = []
     num_processes = int(sys.argv[1]) if len(sys.argv) > 1 else get_num_cores()
+    print("Running", num_processes, "parallel processes.")
     for m, n in all_pair_iterator(int(sys.argv[2]) if len(sys.argv) > 2 else None):
         data_name = f"data/ZeroOneEquations-{m+n:04}-{m:04}-{n:04}.txt"
         if os.path.isfile(data_name):
