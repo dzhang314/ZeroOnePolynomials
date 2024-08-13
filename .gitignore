@@ -2,6 +2,7 @@
 /__pycache__/
 /bin/GCC-*
 /bin/CLANG-*
+/bin/APPLE-CLANG-*
 /bin/ZeroOneSolver-*-*
 /data/ZeroOneEquations-*-*-*.txt
 /data/WeaklyCanonizedEquations-*.txt
