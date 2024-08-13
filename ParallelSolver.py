@@ -8,6 +8,35 @@ from time import sleep
 from sys import argv
 
 
+def get_num_cores() -> int:
+    """
+    Return the number of logical CPU cores in the machine executing this
+    program (or a reasonable guess, 8, if this information is not available.)
+    """
+    result = os.cpu_count()
+    return 8 if result is None else result
+
+
+def find_gcc_executable() -> str:
+    """
+    Return the path to the most recent version of the GNU C++ compiler
+    installed on the system. If no such compiler is found, return "g++".
+    """
+    if os.path.isdir("/opt/homebrew/bin"):
+        candidates = [
+            filename
+            for filename in os.listdir("/opt/homebrew/bin")
+            if filename.startswith("g++")
+        ]
+        if candidates:
+            return os.path.join("/opt/homebrew/bin", sorted(candidates)[-1])
+    return "g++"
+
+
+NUM_CORES: int = get_num_cores()
+GCC_EXECUTABLE: str = find_gcc_executable()
+
+
 def degree_pair_iterator(d: int) -> Iterator[tuple[int, int]]:
     """
     Given an integer d, return an iterator over all pairs
@@ -30,15 +59,6 @@ def max_degree_pair_iterator(d: int | None) -> Iterator[tuple[int, int]]:
         yield from degree_pair_iterator(i)
 
 
-def get_num_cores() -> int:
-    """
-    Return the number of logical CPU cores in the machine executing this
-    program (or a reasonable guess, 4, if this information is not available.)
-    """
-    result = os.cpu_count()
-    return 4 if result is None else result
-
-
 def executable_path(m: int, n: int) -> str:
     return f"bin/ZeroOneSolver-{m+n:04}-{m:04}-{n:04}"
 
@@ -52,7 +72,10 @@ def compile(m: int, n: int, output_path: str):
         os.remove(output_path)
     subprocess.run(
         [
-            "g++",
+            GCC_EXECUTABLE,
+            "-Wall",
+            "-Wextra",
+            "-pedantic",
             "-std=c++23",
             "-O3",
             "-march=native",
@@ -66,6 +89,7 @@ def compile(m: int, n: int, output_path: str):
         ],
         check=True,
     )
+    assert os.path.isfile(output_path) or os.path.isfile(output_path + ".exe")
 
 
 def wait_for_process_to_finish(
@@ -98,7 +122,7 @@ def main():
     if not os.path.isdir("data"):
         os.mkdir("data")
 
-    num_processes = int(argv[1]) if len(argv) > 1 else get_num_cores() - 1
+    num_processes = int(argv[1]) if len(argv) > 1 else NUM_CORES - 1
     print("Running", num_processes, "parallel processes.")
 
     processes: list[tuple[subprocess.Popen[bytes], str, str, str]] = []
