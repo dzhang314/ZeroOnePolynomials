@@ -18,9 +18,44 @@
 namespace ZeroOneSolver {
 
 
+/******************************************************************************
+ * ZeroOneSolver is a high-performance C++20 program that analyzes systems of
+ * bilinear equations of the following form:
+ *
+ *     p_1 + q_1 = 0 or 1
+ *     p_1*q_1 + p_2 + q_2 = 0 or 1
+ *     p_1*q_2 + p_2*q_1 + p_3 + q_3 = 0 or 1
+ *     p_1*q_3 + p_2*q_2 + p_3*q_1 + p_4 + q_4 = 0 or 1
+ *     ...
+ *     p_(M-2)*q_(N-1) + p_(M-1)*q_(N-2) + p_(M-3) + q_(N-3) = 0 or 1
+ *     p_(M-1)*q_(N-1) + p_(M-2) + q_(N-2) = 0 or 1
+ *     p_(M-1) + q_(N-1) = 0 or 1
+ *
+ * Here, {p_1, p_2, ..., p_(M-1)} and {q_1, q_2, ..., q_(N-1)} are real
+ * variables taking values in the closed interval [0, 1].
+ *
+ * ZeroOneSolver attempts to prove that all solutions of such systems are
+ * {0, 1}-valued, i.e., no variable ever lies strictly between 0 and 1.
+ ******************************************************************************/
+
+
+// We assume that the parameters M and N, which define the number of variables
+// in the system, are known at compile time and satisfy 1 < M < N < 256.
 using var_index_t = std::uint8_t;
 
 
+/******************************************************************************
+ * A `Term` is an ordered pair of `var_index_t` values that represents a
+ * monomial of the form 0, 1, p_i, q_j, or p_i*q_j.
+ *
+ *     `Term(255, 255)` represents 0.
+ *     `Term(0, 0)` represents 1.
+ *     `Term(i, 0)` where 1 <= i <= 254 represents p_i.
+ *     `Term(0, j)` where 1 <= j <= 254 represents q_j.
+ *     `Term(i, j)` where 1 <= i, j <= 254 represents p_i*q_j.
+ *
+ * All remaining forms (`Term(i, 255)` and `Term(255, j)`) are invalid.
+ ******************************************************************************/
 struct Term {
 
     var_index_t p_index;
@@ -66,6 +101,12 @@ inline std::ostream &operator<<(std::ostream &os, const Term &term) {
 }
 
 
+/******************************************************************************
+ * A `TwoBitPackedArray<T, N>` is an array of `N` elements of type `T` in which
+ * each element is represented by two bits and four elements are packed into a
+ * single `std::byte`. The type `T` is expected to be `static_cast`-able to and
+ * from `std::byte`, e.g., an `enum class` with values 0, 1, 2, and 3.
+ ******************************************************************************/
 template <typename T, std::size_t N>
 class TwoBitPackedArray {
 
@@ -95,6 +136,12 @@ public:
 }; // class TwoBitPackedArray<N>
 
 
+/******************************************************************************
+ * The right-hand side of each equation is either 0 or 1. Initially, all
+ * right-hand sides are assigned the indefinite value `RHS::ZERO_OR_ONE`.
+ * ZeroOneSolver then performs a backtracking search in which some right-hand
+ * sides are assigned the definite values `RHS::ZERO` or `RHS::ONE`.
+ ******************************************************************************/
 enum class RHS : std::uint8_t {
     ZERO_OR_ONE = 0x00,
     ZERO = 0x01,
@@ -102,6 +149,13 @@ enum class RHS : std::uint8_t {
 }; // enum class RHS
 
 
+/******************************************************************************
+ * Each variable `p_i` or `q_j` is initially unknown and is assigned the value
+ * `VAR::UNKNOWN`. As the backtracking search progresses, some variables are
+ * deduced to have the values `VAR::ZERO` or `VAR::ONE`. In some cases, a
+ * variable can be assigned the value `VAR::ZERO_OR_ONE`, indicating that the
+ * variable has been deduced to be either 0 or 1 and cannot lie in between.
+ ******************************************************************************/
 enum class VAR : std::uint8_t {
     UNKNOWN = 0x00,
     ZERO_OR_ONE = 0x01,
@@ -110,13 +164,20 @@ enum class VAR : std::uint8_t {
 }; // enum class VAR
 
 
+/******************************************************************************
+ * A `System<M, N>` represents a system of `M + N - 1` bilinear equations over
+ * the variables {p_1, p_2, ..., p_(M-1)} and {q_1, q_2, ..., q_(N-1)} together
+ * with a partial assignment of values to the variables and right-hand sides of
+ * each equation. Each equation in the system can contain up to `M + 1` terms.
+ ******************************************************************************/
 template <var_index_t M, var_index_t N>
 struct System {
 
 
-    static_assert((0 < M) && (M < N));
+    static_assert((1 < M) && (M < N));
 
 
+    // Equations with fewer than `M + 1` terms are padded with zeroes.
     Term lhs[M + N - 1][M + 1];
     TwoBitPackedArray<RHS, M + N - 1> rhs;
     TwoBitPackedArray<VAR, M - 1> p;
