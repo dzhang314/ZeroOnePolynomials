@@ -53,7 +53,7 @@ def compile(m: int, n: int, output_path: str):
     subprocess.run(
         [
             "g++",
-            "-std=c++20",
+            "-std=c++23",
             "-O3",
             "-march=native",
             "-DZERO_ONE_SOLVER_M=" + str(m),

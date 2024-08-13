@@ -420,12 +420,22 @@ struct System {
     }
 
 
-    static constexpr std::size_t INVALID_INDEX = ~static_cast<std::size_t>(0);
+    static constexpr bool contains_term(
+        const Term *array, std::size_t size, const Term &term
+    ) noexcept {
+        for (std::size_t i = 0; i < size; ++i) {
+            if (array[i] == term) { return true; }
+        }
+        return false;
+    }
 
 
     constexpr bool simplify() noexcept {
 
-        // Phase 1: Deduce right-hand sides using occurrences of 1.
+        constexpr std::size_t INVALID_INDEX = ~static_cast<std::size_t>(0);
+
+    PHASE_ONE:
+        // Phase 1: Deduce right-hand sides and eliminate occurrences of 1.
         for (std::size_t e = 0; e < M + N - 1; ++e) {
             // Scan the left-hand side of each equation for nonzero terms
             // and 1, keeping track of the index at which 1 occurs.
@@ -447,8 +457,7 @@ struct System {
                 // If an equation has no nonzero terms on its left-hand
                 // side, then we set its right-hand side to zero.
                 rhs.set(e, RHS::ZERO);
-            }
-            if (one_index != INVALID_INDEX) {
+            } else if (one_index != INVALID_INDEX) {
                 assert(lhs[e][one_index] == TERM_ONE);
                 // An equation of the form ... + 1 + ... == 0 is unsatisfiable.
                 if (rhs.get(e) == RHS::ZERO) { return false; }
@@ -466,18 +475,18 @@ struct System {
             const RHS rhs_value = rhs.get(e);
             if (rhs_value == RHS::ZERO) {
                 // If an equation has the form ... + p_i + ... == 0,
-                // then we deduce p_i == 0. The same holds for q_j.
+                // then we set p_i to 0. The same holds for q_j.
                 for (std::size_t t = 0; t < M + 1; ++t) {
                     const Term term = lhs[e][t];
+                    // We know `term.p_index` and `term.q_index` cannot both be
+                    // zero because all occurrences of 1 have been eliminated.
                     assert(term != TERM_ONE);
                     if (term.q_index == 0) {
-                        // We know `term.p_index != 0` because all occurrences
-                        // of 1 on the left-hand side have been eliminated.
                         set_p_zero(term.p_index);
-                        return simplify();
+                        goto PHASE_ONE;
                     } else if (term.p_index == 0) {
                         set_q_zero(term.q_index);
-                        return simplify();
+                        goto PHASE_ONE;
                     }
                 }
             } else if (rhs_value == RHS::ONE) {
@@ -490,11 +499,12 @@ struct System {
                 if (term != TERM_ZERO) {
                     if (term.p_index) { set_p_one(term.p_index); }
                     if (term.q_index) { set_q_one(term.q_index); }
-                    return simplify();
+                    goto PHASE_ONE;
                 }
             }
         }
 
+    PHASE_THREE:
         // Phase 3: Eliminate unknown variables using all-but-one principle.
         bool eliminated_unknown = false;
         for (std::size_t e = 0; e < M + N - 1; ++e) {
@@ -513,7 +523,7 @@ struct System {
             }
         }
         if (!has_unknown_variable()) { return true; }
-        if (eliminated_unknown) { return simplify(); }
+        if (eliminated_unknown) { goto PHASE_THREE; }
 
         // Phase 4: Eliminate unknown variables in subsystems of the form:
         //     v*w == 0 or 1
@@ -522,8 +532,8 @@ struct System {
         // (1, 0), or (1, 1), so we deduce that v and w are both 0 or 1.
 
         // Phase 4.1: Find equations of the form v*w == 0 or 1.
-        Term lone_quadratic_terms[M + N - 1];
-        std::size_t num_lone_terms = 0;
+        Term lone_terms[M + N - 1];
+        std::size_t t = 0;
         for (std::size_t e = 0; e < M + N - 1; ++e) {
             // Note that an equation of the form ... + v*w + ... == 0 or 1,
             // where v*w is the only unknown term, is sufficient to conclude
@@ -537,12 +547,11 @@ struct System {
                 // q_j would have been eliminated in Phase 3.
                 assert(term.p_index);
                 assert(term.q_index);
-                lone_quadratic_terms[num_lone_terms++] = term;
+                lone_terms[t++] = term;
             }
         }
 
         // Phase 4.2: Find equations of the form v + w == 0 or 1.
-        bool found_subsystem = false;
         for (std::size_t e = 0; e < M + N - 1; ++e) {
             const auto [x, y] = find_two_nonzero_terms(e);
             if (y != TERM_ZERO) {
@@ -550,30 +559,22 @@ struct System {
                 if ((x.q_index == 0) && (y.p_index == 0)) {
                     assert(x.p_index);
                     assert(y.q_index);
-                    const Term target_term = {x.p_index, y.q_index};
-                    for (std::size_t t = 0; t < num_lone_terms; ++t) {
-                        if (lone_quadratic_terms[t] == target_term) {
-                            found_subsystem |= set_p_zero_or_one(x.p_index);
-                            found_subsystem |= set_q_zero_or_one(y.q_index);
-                            break;
-                        }
+                    if (contains_term(lone_terms, t, {x.p_index, y.q_index})) {
+                        eliminated_unknown |= set_p_zero_or_one(x.p_index);
+                        eliminated_unknown |= set_q_zero_or_one(y.q_index);
                     }
                 } else if ((x.p_index == 0) && (y.q_index == 0)) {
                     assert(x.q_index);
                     assert(y.p_index);
-                    const Term target_term = {y.p_index, x.q_index};
-                    for (std::size_t t = 0; t < num_lone_terms; ++t) {
-                        if (lone_quadratic_terms[t] == target_term) {
-                            found_subsystem |= set_p_zero_or_one(y.p_index);
-                            found_subsystem |= set_q_zero_or_one(x.q_index);
-                            break;
-                        }
+                    if (contains_term(lone_terms, t, {y.p_index, x.q_index})) {
+                        eliminated_unknown |= set_p_zero_or_one(y.p_index);
+                        eliminated_unknown |= set_q_zero_or_one(x.q_index);
                     }
                 }
             }
         }
         if (!has_unknown_variable()) { return true; }
-        if (found_subsystem) { return simplify(); }
+        if (eliminated_unknown) { goto PHASE_THREE; }
 
         // At this point, no further simplification is possible.
         return true;
