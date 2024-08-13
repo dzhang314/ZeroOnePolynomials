@@ -11,9 +11,9 @@ from sys import argv
 def degree_pair_iterator(degree: int) -> Iterator[tuple[int, int]]:
     """
     Given an integer degree, return an iterator over all pairs
-    of integers (m, n) such that 0 < m < n and m + n == degree.
+    of integers (m, n) such that 1 < m < n and m + n == degree.
     """
-    for m in range(1, (degree + 1) >> 1):
+    for m in range(2, (degree + 1) >> 1):
         n = degree - m
         yield (m, n)
 
