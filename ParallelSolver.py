@@ -8,26 +8,26 @@ from time import sleep
 from sys import argv
 
 
-def degree_pair_iterator(degree: int) -> Iterator[tuple[int, int]]:
+def degree_pair_iterator(d: int) -> Iterator[tuple[int, int]]:
     """
-    Given an integer degree, return an iterator over all pairs
-    of integers (m, n) such that 1 < m < n and m + n == degree.
+    Given an integer d, return an iterator over all pairs
+    of integers (m, n) such that 0 < m < n and m + n == d.
     """
-    for m in range(2, (degree + 1) >> 1):
-        n = degree - m
+    for m in range(1, (d + 1) >> 1):
+        n = d - m
         yield (m, n)
 
 
-def max_degree_pair_iterator(max_degree: int | None) -> Iterator[tuple[int, int]]:
+def max_degree_pair_iterator(d: int | None) -> Iterator[tuple[int, int]]:
     """
-    Given an integer max_degree, return an iterator over all pairs
-    of integers (m, n) such that 0 < m < n and m + n <= max_degree.
+    Given an integer d, return an iterator over all pairs
+    of integers (m, n) such that 0 < m < n and m + n <= d.
 
-    The pairs are returned in increasing order of m + n. If max_degree is
-    None, it is treated as infinity, and an infinite iterator is returned.
+    The pairs are returned in increasing order of m + n. If d is None,
+    it is treated as infinity, and an infinite iterator is returned.
     """
-    for degree in count() if max_degree is None else range(max_degree + 1):
-        yield from degree_pair_iterator(degree)
+    for i in count() if d is None else range(d + 1):
+        yield from degree_pair_iterator(i)
 
 
 def get_num_cores() -> int:
@@ -81,7 +81,7 @@ def wait_for_process_to_finish(
                     print("ERROR: Process", dst, "returned non-zero exit code.")
                 if os.path.isfile(exe):
                     os.remove(exe)
-                if os.path.isfile(exe + ".exe"):
+                if os.path.isfile(exe + ".exe"):  # Windows compatibility
                     os.remove(exe + ".exe")
                 if proc.stdout is not None:
                     proc.stdout.close()
@@ -102,24 +102,27 @@ def main():
 
     processes: list[tuple[subprocess.Popen[bytes], str, str, str]] = []
     for m, n in max_degree_pair_iterator(int(argv[2]) if len(argv) > 2 else None):
-        data_path = data_file_path(m, n)
-        if os.path.isfile(data_path):
-            print(data_path, "already computed.")
-        else:
-            while len(processes) >= num_processes:
-                wait_for_process_to_finish(processes)
-            exe_path = executable_path(m, n)
-            compile(m, n, exe_path)
-            temp_path = data_path + ".temp"
-            print("Computing", data_path + ".")
-            processes.append(
-                (
-                    subprocess.Popen([exe_path], stdout=open(temp_path, "w")),
-                    exe_path,
-                    temp_path,
-                    data_path,
+        # The cases m == 1, 2, 3, 4, and 6 have already been solved for all n,
+        # so we only need to consider m == 5 and m >= 7.
+        if m == 5 or m >= 7:
+            data_path = data_file_path(m, n)
+            if os.path.isfile(data_path):
+                print(data_path, "already computed.")
+            else:
+                while len(processes) >= num_processes:
+                    wait_for_process_to_finish(processes)
+                exe_path = executable_path(m, n)
+                compile(m, n, exe_path)
+                temp_path = data_path + ".temp"
+                print("Computing", data_path + ".")
+                processes.append(
+                    (
+                        subprocess.Popen([exe_path], stdout=open(temp_path, "w")),
+                        exe_path,
+                        temp_path,
+                        data_path,
+                    )
                 )
-            )
     while processes:
         wait_for_process_to_finish(processes)
 
