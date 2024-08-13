@@ -1,5 +1,7 @@
 /.vscode/
 /__pycache__/
+/bin/GCC-*
+/bin/CLANG-*
 /bin/ZeroOneSolver-*-*
 /data/ZeroOneEquations-*-*-*.txt
 /data/WeaklyCanonizedEquations-*.txt
