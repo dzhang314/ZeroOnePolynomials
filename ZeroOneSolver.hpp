@@ -1,3 +1,11 @@
+/******************************************************************************
+ * Copyright (c) 2023-2024 David K. Zhang
+ * This file is part of ZeroOnePolynomials by David K. Zhang.
+ * ZeroOnePolynomials is distributed under the terms of the MIT license.
+ * See the LICENSE file for full license details.
+ ******************************************************************************/
+
+
 #ifndef ZERO_ONE_SOLVER_HPP_INCLUDED
 #define ZERO_ONE_SOLVER_HPP_INCLUDED
 

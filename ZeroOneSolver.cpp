@@ -1,3 +1,11 @@
+/******************************************************************************
+ * Copyright (c) 2023-2024 David K. Zhang
+ * This file is part of ZeroOnePolynomials by David K. Zhang.
+ * ZeroOnePolynomials is distributed under the terms of the MIT license.
+ * See the LICENSE file for full license details.
+ ******************************************************************************/
+
+
 #include <bitset>   // for std::bitset
 #include <cstddef>  // for std::size_t
 #include <iostream> // for std::cout, std::cerr
