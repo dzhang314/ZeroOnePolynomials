@@ -121,7 +121,7 @@ class TwoBitPackedArray {
 
     static constexpr std::byte MASK = static_cast<std::byte>(0x03);
 
-    std::byte data[(N + 3) >> 2];
+    std::byte data[(N + 3) >> 2] = {}; // Zero-initialize data.
 
 public:
 
@@ -152,7 +152,7 @@ public:
  * sides are assigned the definite values `RHS::ZERO` or `RHS::ONE`.
  ******************************************************************************/
 enum class RHS : std::uint8_t {
-    ZERO_OR_ONE = 0x00,
+    ZERO_OR_ONE = 0x00, // Default value; must be zero.
     ZERO = 0x01,
     ONE = 0x02,
 }; // enum class RHS
@@ -166,7 +166,7 @@ enum class RHS : std::uint8_t {
  * variable has been deduced to be either 0 or 1 and cannot lie in between.
  ******************************************************************************/
 enum class VAR : std::uint8_t {
-    UNKNOWN = 0x00,
+    UNKNOWN = 0x00, // Default value; must be zero.
     ZERO_OR_ONE = 0x01,
     ZERO = 0x02,
     ONE = 0x03,
@@ -194,22 +194,18 @@ struct System {
 
 
     /**************************************************************************
-     * The `System<M, N>` defailt constructor sets up the initial system of
+     * The `System<M, N>` default constructor sets up the initial system of
      * equations used to study the 0-1 Polynomial Conjecture. Each equation
      * constrains one coefficient of the product P(x) * Q(x), where P and Q
      * have degree M and N, respectively.
      **************************************************************************/
     constexpr System() noexcept {
 
-        // Fill arrays with zero and unknown values.
+        // Initialize left-hand sides.
         for (std::size_t e = 0; e < M + N - 1; ++e) {
             for (std::size_t t = 0; t < M + 1; ++t) { lhs[e][t] = TERM_ZERO; }
         }
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
-            rhs.set(e, RHS::ZERO_OR_ONE);
-        }
-        for (var_index_t i = 1; i <= M - 1; ++i) { p.set(i - 1, VAR::UNKNOWN); }
-        for (var_index_t j = 1; j <= N - 1; ++j) { q.set(j - 1, VAR::UNKNOWN); }
+        // The arrays `rhs`, `p`, and `q` are automatically zero-initialized.
 
         // Coefficient of x^d for d < M:
         for (int d = 1; d < M; ++d) {
@@ -504,9 +500,13 @@ struct System {
             }
         }
 
+        bool eliminated_unknown;
+        Term lone_terms[M + N - 1];
+        std::size_t t;
+
     PHASE_THREE:
         // Phase 3: Eliminate unknown variables using all-but-one principle.
-        bool eliminated_unknown = false;
+        eliminated_unknown = false;
         for (std::size_t e = 0; e < M + N - 1; ++e) {
             // If every term in an equation except one is already known
             // to be 0 or 1, then the remaining term must also be 0 or 1.
@@ -514,10 +514,9 @@ struct System {
             assert(term != TERM_ONE);
             if (term != TERM_ZERO) {
                 assert(is_unknown(term));
-                if (term.q_index == 0) {
+                if (term.q_index == 0) { // p_i
                     eliminated_unknown |= set_p_zero_or_one(term.p_index);
-                }
-                if (term.p_index == 0) {
+                } else if (term.p_index == 0) { // q_j
                     eliminated_unknown |= set_q_zero_or_one(term.q_index);
                 }
             }
@@ -532,8 +531,7 @@ struct System {
         // (1, 0), or (1, 1), so we deduce that v and w are both 0 or 1.
 
         // Phase 4.1: Find equations of the form v*w == 0 or 1.
-        Term lone_terms[M + N - 1];
-        std::size_t t = 0;
+        t = 0;
         for (std::size_t e = 0; e < M + N - 1; ++e) {
             // Note that an equation of the form ... + v*w + ... == 0 or 1,
             // where v*w is the only unknown term, is sufficient to conclude
@@ -556,14 +554,14 @@ struct System {
             const auto [x, y] = find_two_nonzero_terms(e);
             if (y != TERM_ZERO) {
                 assert(x != TERM_ZERO);
-                if ((x.q_index == 0) && (y.p_index == 0)) {
+                if ((x.q_index == 0) && (y.p_index == 0)) { // p_x*q_y
                     assert(x.p_index);
                     assert(y.q_index);
                     if (contains_term(lone_terms, t, {x.p_index, y.q_index})) {
                         eliminated_unknown |= set_p_zero_or_one(x.p_index);
                         eliminated_unknown |= set_q_zero_or_one(y.q_index);
                     }
-                } else if ((x.p_index == 0) && (y.q_index == 0)) {
+                } else if ((x.p_index == 0) && (y.q_index == 0)) { // p_y*q_x
                     assert(x.q_index);
                     assert(y.p_index);
                     if (contains_term(lone_terms, t, {y.p_index, x.q_index})) {
