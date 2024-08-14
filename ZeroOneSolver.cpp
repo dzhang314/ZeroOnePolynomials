@@ -6,6 +6,8 @@
  ******************************************************************************/
 
 #include <bitset>
+#include <cassert>
+#include <cstddef>
 #include <iostream>
 #include <vector>
 
@@ -176,6 +178,8 @@ find_case_split(std::vector<System<M, N>> &stack, const System<M, N> &system) {
                     // Any remaining nonzero term must have the form p_i*q_j
                     // because terms of the form 1, p_i, and q_j are removed
                     // during simplification.
+                    assert(term.p_index);
+                    assert(term.q_index);
                     stack.push_back(system);
                     stack.back().set_q_zero(term.q_index);
                     stack.push_back(system);
@@ -195,6 +199,8 @@ find_case_split(std::vector<System<M, N>> &stack, const System<M, N> &system) {
                 // Any remaining unique nonzero term must have the form p_i*q_j
                 // because case splits on p_i == 0 or 1 and q_j == 0 or 1 have
                 // already been performed in Phase 1.
+                assert(term.p_index);
+                assert(term.q_index);
                 stack.push_back(system);
                 stack.back().set_p_one(term.p_index);
                 stack.back().set_q_one(term.q_index);
