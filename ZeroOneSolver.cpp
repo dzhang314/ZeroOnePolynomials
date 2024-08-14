@@ -22,16 +22,14 @@ using ZeroOneSolver::var_index_t;
 #ifdef ZERO_ONE_SOLVER_M
 constexpr var_index_t M = ZERO_ONE_SOLVER_M;
 #else
-#warning "ZERO_ONE_SOLVER_M not defined; using default value 7."
-constexpr var_index_t M = 13;
+#error "ZERO_ONE_SOLVER_M must be defined."
 #endif
 
 
 #ifdef ZERO_ONE_SOLVER_N
 constexpr var_index_t N = ZERO_ONE_SOLVER_N;
 #else
-#warning "ZERO_ONE_SOLVER_N not defined; using default value 13."
-constexpr var_index_t N = 17;
+#error "ZERO_ONE_SOLVER_N must be defined."
 #endif
 
 
@@ -50,12 +48,11 @@ static std::ostream &operator<<(std::ostream &os, const Term &term) {
 }
 
 
-constexpr bool SKIP_ZERO_TERMS = false;
-
-
+// clang-format off
+constexpr bool SKIP_ZERO_TERMS = true;
+constexpr bool SKIP_ZERO_EQUATIONS = true;
 static std::ostream &operator<<(std::ostream &os, const System<M, N> &system) {
-    // clang-format off
-    for (std::size_t e = 0; e < M + N - 1; ++e) {
+    for (std::size_t e = 0; e < M + N - 3; ++e) {
         bool first = true;
         for (std::size_t t = 0; t < M + 1; ++t) {
             const Term term = system.lhs[e][t];
@@ -63,7 +60,10 @@ static std::ostream &operator<<(std::ostream &os, const System<M, N> &system) {
             if (first) { first = false; } else { os << " + "; }
             os << term;
         }
-        switch (system.rhs.get(e)) {
+        const RHS rhs = system.rhs.get(e);
+        if constexpr (SKIP_ZERO_EQUATIONS) { if (first && (rhs == RHS::ZERO)) { continue; } }
+        else { if (first) { os << '0'; } }
+        switch (rhs) {
             case RHS::ZERO_OR_ONE: os << " == 0 or 1\n"; break;
             case RHS::ZERO:        os << " == 0\n";      break;
             case RHS::ONE:         os << " == 1\n";      break;
@@ -85,15 +85,15 @@ static std::ostream &operator<<(std::ostream &os, const System<M, N> &system) {
             case VAR::ONE:         os << 'q' << static_cast<int>(j) << " == 1\n";      break;
         }
     }
-    // clang-format on
     return os;
 }
+// clang-format on
 
 
 static void print_leaf_system(const System<M, N> &system) {
     std::bitset<M - 1> p_used;
     std::bitset<N - 1> q_used;
-    for (std::size_t e = 0; e < M + N - 1; ++e) {
+    for (std::size_t e = 0; e < M + N - 3; ++e) {
         if (system.rhs.get(e) == RHS::ZERO) {
             for (std::size_t t = 0; t < M + 1; ++t) {
                 assert(system.lhs[e][t] == TERM_ZERO);
@@ -104,8 +104,8 @@ static void print_leaf_system(const System<M, N> &system) {
             for (std::size_t t = 0; t < M + 1; ++t) {
                 const Term term = system.lhs[e][t];
                 if (term == TERM_ZERO) { continue; }
-                if (term.p_index) { p_used.set(term.p_index - 1); }
-                if (term.q_index) { q_used.set(term.q_index - 1); }
+                if (term.p_index) { p_used[term.p_index - 1] = true; }
+                if (term.q_index) { q_used[term.q_index - 1] = true; }
                 if (first) {
                     first = false;
                 } else {
@@ -116,22 +116,30 @@ static void print_leaf_system(const System<M, N> &system) {
             std::cout << '\n';
         }
     }
-    for (std::size_t i = 0; i < M - 1; ++i) {
-        const VAR value = system.p.get(i);
+    for (var_index_t i = 1; i <= M - 1; ++i) {
+        const VAR value = system.get_p(i);
         if ((value == VAR::ZERO) || (value == VAR::ONE)) {
-            assert(!p_used.test(i));
+            assert(!p_used.test(i - 1));
         } else {
             assert(value == VAR::UNKNOWN);
-            if (!p_used[i]) { std::cout << "0 <= p" << (i + 1) << " <= 1\n"; }
+            if (!p_used[i - 1]) {
+                std::cout << "0 <= p" << static_cast<int>(i) << " <= 1\n";
+                std::cerr << "FOUND SYSTEM WITH UNCONSTRAINED VARIABLE!\n";
+                std::cerr << system << std::flush;
+            }
         }
     }
-    for (std::size_t i = 0; i < N - 1; ++i) {
-        const VAR value = system.q.get(i);
+    for (var_index_t j = 1; j <= N - 1; ++j) {
+        const VAR value = system.get_q(j);
         if ((value == VAR::ZERO) || (value == VAR::ONE)) {
-            assert(!q_used.test(i));
+            assert(!q_used.test(j - 1));
         } else {
             assert(value == VAR::UNKNOWN);
-            if (!q_used[i]) { std::cout << "0 <= q" << (i + 1) << " <= 1\n"; }
+            if (!q_used[j - 1]) {
+                std::cout << "0 <= q" << static_cast<int>(j) << " <= 1\n";
+                std::cerr << "FOUND SYSTEM WITH UNCONSTRAINED VARIABLE!\n";
+                std::cerr << system << std::flush;
+            }
         }
     }
     std::cout << '\n';
@@ -163,7 +171,7 @@ find_case_split(std::vector<System<M, N>> &stack, const System<M, N> &system) {
         }
     }
 
-    for (std::size_t e = 0; e < M + N - 1; ++e) {
+    for (std::size_t e = 0; e < M + N - 3; ++e) {
         const RHS rhs_value = system.rhs.get(e);
         if (rhs_value == RHS::ZERO) {
             // ... + p_i*q_j + ... == 0
@@ -200,7 +208,7 @@ find_case_split(std::vector<System<M, N>> &stack, const System<M, N> &system) {
     }
 
     // ... == 0 or 1
-    for (std::size_t e = 0; e < M + N - 1; ++e) {
+    for (std::size_t e = 0; e < M + N - 3; ++e) {
         if (system.rhs.get(e) == RHS::ZERO_OR_ONE) {
             stack.push_back(system);
             stack.back().rhs.set(e, RHS::ONE);
@@ -214,8 +222,39 @@ find_case_split(std::vector<System<M, N>> &stack, const System<M, N> &system) {
 }
 
 
-static void analyze(const System<M, N> &initial) {
+/******************************************************************************
+ * Because the coefficients of x^M and x^N in P(x) * Q(x) contain the term 1,
+ * we know that all other terms in those coefficients must be zero.
+ *
+ *     p_1*q_(M-1) == p_2*q_(M-2) == ... == p_(M-1)*q_1 == q_M == 0
+ *     p_1*q_(N-1) == p_2*q_(N-2) == ... == p_(M-1)*q_(N-M+1) == q_(N-M) == 0
+ *
+ * This implies that q_M == q_(N-M) == 0, and for each 1 <= i <= M - 1,
+ * p_i == 0 or q_(M-i) == q_(N-i) == 0. Using this observation, we consider
+ * 2^(M-1) cases corresponding to these binary choices.
+ ******************************************************************************/
+
+
+consteval System<M, N> initial_system() noexcept {
+    System<M, N> system;
+    system.set_q_zero(M);
+    system.set_q_zero(N - M);
+    system.simplify();
+    return system;
+}
+
+
+static void analyze(const std::bitset<M - 1> &case_id) {
     std::vector<System<M, N>> stack;
+    System<M, N> initial = initial_system();
+    for (var_index_t i = 1; i <= M - 1; ++i) {
+        if (case_id[i - 1]) {
+            initial.set_q_zero(M - i);
+            initial.set_q_zero(N - i);
+        } else {
+            initial.set_p_zero(i);
+        }
+    }
     stack.push_back(initial);
     while (!stack.empty()) {
         System<M, N> system = stack.back();
@@ -227,56 +266,20 @@ static void analyze(const System<M, N> &initial) {
 }
 
 
-/******************************************************************************
- * Because the coefficients of x^M and x^N in P(x) * Q(x) contain the term 1,
- * we know that all other terms in those coefficients must be zero.
- *
- *     p_1*q_(M-1) == p_2*q_(M-2) == ... == p_(M-1)*q_1 == q_M == 0
- *     p_1*q_(N-1) == p_2*q_(N-2) == ... == p_(M-1)*q_(N-M+1) == q_N == 0
- *
- * This implies that q_M == q_N == 0, and for each 1 <= i <= M - 1, p_i == 0 or
- * or q_(M-i) == q_(N-i) == 0. Using this observation, we consider 2^(M-1)
- * cases corresponding to these binary choices.
- ******************************************************************************/
-static void case_split_p(var_index_t depth, System<M, N> system);
-static void case_split_q(var_index_t depth, System<M, N> system);
-
-
-static void case_split_p(var_index_t depth, System<M, N> system) {
-    system.set_p_zero(depth);
-    if (system.simplify() && system.has_unknown_variable()) {
-        if (depth < M - 1) {
-            case_split_p(depth + 1, system);
-            case_split_q(depth + 1, system);
+static bool increment(std::bitset<M - 1> &bitset) noexcept {
+    for (std::size_t i = 0; i < M - 1; ++i) {
+        if (bitset[i]) {
+            bitset[i] = false;
         } else {
-            analyze(system);
+            bitset[i] = true;
+            return true;
         }
     }
-}
-
-
-static void case_split_q(var_index_t depth, System<M, N> system) {
-    system.set_q_zero(M - depth);
-    system.set_q_zero(N - depth);
-    if (system.simplify() && system.has_unknown_variable()) {
-        if (depth < M - 1) {
-            case_split_p(depth + 1, system);
-            case_split_q(depth + 1, system);
-        } else {
-            analyze(system);
-        }
-    }
-}
-
-
-consteval System<M, N> initial_system() noexcept {
-    System<M, N> system;
-    if (system.simplify()) { return system; }
-    // Intentionally produce a compile-time error if simplification fails.
+    return false;
 }
 
 
 int main() {
-    case_split_p(1, initial_system());
-    case_split_q(1, initial_system());
+    std::bitset<M - 1> case_id;
+    do { analyze(case_id); } while (increment(case_id));
 }

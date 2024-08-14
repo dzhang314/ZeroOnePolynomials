@@ -156,7 +156,7 @@ enum class VAR : std::uint8_t {
 
 
 /******************************************************************************
- * A `System<M, N>` represents a system of M + N - 1 bilinear equations over
+ * A `System<M, N>` represents a system of M + N - 3 bilinear equations over
  * the variables {p_1, p_2, ..., p_(M-1)} and {q_1, q_2, ..., q_(N-1)} together
  * with a partial assignment of values to the variables and right-hand sides of
  * each equation. Each equation in the system can contain up to M + 1 terms.
@@ -169,8 +169,8 @@ struct System {
 
 
     // Equations with fewer than `M + 1` terms are padded with zeroes.
-    Term lhs[M + N - 1][M + 1];
-    TwoBitPackedArray<RHS, M + N - 1> rhs;
+    Term lhs[M + N - 3][M + 1];
+    TwoBitPackedArray<RHS, M + N - 3> rhs;
     TwoBitPackedArray<VAR, M - 1> p;
     TwoBitPackedArray<VAR, N - 1> q;
 
@@ -184,7 +184,7 @@ struct System {
     constexpr System() noexcept {
 
         // Initialize left-hand sides.
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
+        for (std::size_t e = 0; e < M + N - 3; ++e) {
             for (std::size_t t = 0; t < M + 1; ++t) { lhs[e][t] = TERM_ZERO; }
         }
         // The arrays `rhs`, `p`, and `q` are automatically zero-initialized.
@@ -199,24 +199,24 @@ struct System {
 
         // Coefficient of x^M:
         // p_1*q_(M-1) + p_2*q_(M-2) + ... + p_(M-1)*q_1
-        for (int i = 1; i <= M - 1; ++i) { lhs[M - 1][i - 1] = {i, M - i}; }
-        lhs[M - 1][M - 1] = {0, M}; // q_M
-        lhs[M - 1][M] = TERM_ONE;   // 1
+        // for (int i = 1; i <= M - 1; ++i) { lhs[M - 1][i - 1] = {i, M - i}; }
+        // lhs[M - 1][M - 1] = {0, M}; // q_M
+        // lhs[M - 1][M] = TERM_ONE;   // 1
         // This equation immediately implies q_M == 0.
 
         // Coefficient of x^d for M < d < N:
         for (int d = M + 1; d < N; ++d) {
             // p_1*q_(d-1) + p_2*q_(d-2) + ... + p_(M-1)*q_(d-M+1)
-            for (int i = 1; i <= M - 1; ++i) { lhs[d - 1][i - 1] = {i, d - i}; }
-            lhs[d - 1][M - 1] = {0, d - M}; // q_(d-M)
-            lhs[d - 1][M] = {0, d};         // q_d
+            for (int i = 1; i <= M - 1; ++i) { lhs[d - 2][i - 1] = {i, d - i}; }
+            lhs[d - 2][M - 1] = {0, d - M}; // q_(d-M)
+            lhs[d - 2][M] = {0, d};         // q_d
         }
 
         // Coefficient of x^N:
         // p_1*q_(N-1) + p_2*q_(N-2) + ... + p_(M-1)*q_(N-M+1)
-        for (int i = 1; i <= M - 1; ++i) { lhs[N - 1][i - 1] = {i, N - i}; }
-        lhs[N - 1][M - 1] = {0, N - M}; // q_(N-M)
-        lhs[N - 1][M] = TERM_ONE;       // 1
+        // for (int i = 1; i <= M - 1; ++i) { lhs[N - 1][i - 1] = {i, N - i}; }
+        // lhs[N - 1][M - 1] = {0, N - M}; // q_(N-M)
+        // lhs[N - 1][M] = TERM_ONE;       // 1
         // This equation immediately implies q_(N-M) == 0.
 
         // Coefficient of x^d for d > N:
@@ -224,10 +224,10 @@ struct System {
             const int origin = d - (N - 1);
             // p_(d-N+1)*q_(N-1) + p_(d-N+2)*q_(N-2) + ... + p_(M-1)*q_(d-M+1)
             for (int i = origin; i <= M - 1; ++i) {
-                lhs[d - 1][i - origin] = {i, d - i};
+                lhs[d - 3][i - origin] = {i, d - i};
             }
-            lhs[d - 1][M - origin] = {d - N, 0}; // p_(d-N)
-            lhs[d - 1][M + N - d] = {0, d - M};  // q_(d-M)
+            lhs[d - 3][M - origin] = {d - N, 0}; // p_(d-N)
+            lhs[d - 3][M + N - d] = {0, d - M};  // q_(d-M)
         }
     }
 
@@ -249,7 +249,7 @@ struct System {
         assert(p.get(i - 1) != VAR::ONE);
         p.set(i - 1, VAR::ZERO);
         // Scan for terms containing p_i and set them to zero.
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
+        for (std::size_t e = 0; e < M + N - 3; ++e) {
             for (std::size_t t = 0; t < M + 1; ++t) {
                 if (lhs[e][t].p_index == i) { lhs[e][t] = TERM_ZERO; }
             }
@@ -262,7 +262,7 @@ struct System {
         assert(q.get(j - 1) != VAR::ONE);
         q.set(j - 1, VAR::ZERO);
         // Scan for terms containing q_j and set them to zero.
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
+        for (std::size_t e = 0; e < M + N - 3; ++e) {
             for (std::size_t t = 0; t < M + 1; ++t) {
                 if (lhs[e][t].q_index == j) { lhs[e][t] = TERM_ZERO; }
             }
@@ -275,7 +275,7 @@ struct System {
         assert(p.get(i - 1) != VAR::ZERO);
         p.set(i - 1, VAR::ONE);
         // Scan for terms containing p_i and cancel p_i from them.
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
+        for (std::size_t e = 0; e < M + N - 3; ++e) {
             for (std::size_t t = 0; t < M + 1; ++t) {
                 if (lhs[e][t].p_index == i) { lhs[e][t].p_index = 0; }
             }
@@ -288,7 +288,7 @@ struct System {
         assert(q.get(j - 1) != VAR::ZERO);
         q.set(j - 1, VAR::ONE);
         // Scan for terms containing q_j and cancel q_j from them.
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
+        for (std::size_t e = 0; e < M + N - 3; ++e) {
             for (std::size_t t = 0; t < M + 1; ++t) {
                 if (lhs[e][t].q_index == j) { lhs[e][t].q_index = 0; }
             }
@@ -401,7 +401,7 @@ struct System {
 
             // Phase 1: Deduce right-hand sides and eliminate occurrences of 1.
             constexpr std::size_t INVALID_INDEX = ~static_cast<std::size_t>(0);
-            for (std::size_t e = 0; e < M + N - 1; ++e) {
+            for (std::size_t e = 0; e < M + N - 3; ++e) {
                 // Scan the left-hand side of each equation for nonzero terms
                 // and 1, keeping track of the index at which 1 occurs.
                 bool found_nonzero = false;
@@ -437,7 +437,7 @@ struct System {
 
             // Phase 2: Use right-hand sides to deduce values of variables.
             bool set_variable = false;
-            for (std::size_t e = 0; e < M + N - 1; ++e) {
+            for (std::size_t e = 0; e < M + N - 3; ++e) {
                 const RHS rhs_value = rhs.get(e);
                 if (rhs_value == RHS::ZERO) {
                     // If we see ... + p_i + ... == 0, then we set p_i to 0.
@@ -486,7 +486,7 @@ struct System {
 
             // Phase 3: Eliminate unknown variables by all-but-one principle.
             bool eliminated = false;
-            for (std::size_t e = 0; e < M + N - 1; ++e) {
+            for (std::size_t e = 0; e < M + N - 3; ++e) {
                 // If every term in an equation except one is already known
                 // to be 0 or 1, then the remaining term must also be 0 or 1.
                 const Term term = find_unique_unknown_term(e);
@@ -518,9 +518,9 @@ struct System {
             // (1, 0), or (1, 1), so we deduce that v and w are both 0 or 1.
 
             // Phase 4.1: Find equations of the form v*w == 0 or 1.
-            Term unique[M + N - 1];
+            Term unique[M + N - 3];
             std::size_t t = 0;
-            for (std::size_t e = 0; e < M + N - 1; ++e) {
+            for (std::size_t e = 0; e < M + N - 3; ++e) {
                 // If v*w is the only unknown term in the equation
                 // ... + v*w + ... == 0 or 1, then v*w == 0 or 1.
                 const Term term = find_unique_unknown_term(e);
@@ -537,7 +537,7 @@ struct System {
             }
 
             // Phase 4.2: Find equations of the form v + w == 0 or 1.
-            for (std::size_t e = 0; e < M + N - 1; ++e) {
+            for (std::size_t e = 0; e < M + N - 3; ++e) {
                 const auto [x, y] = find_two_nonzero_terms(e);
                 if (y != TERM_ZERO) {
                     assert(x != TERM_ZERO);
