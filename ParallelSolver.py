@@ -39,12 +39,15 @@ GCC_EXECUTABLE: str = find_gcc_executable()
 
 def degree_pair_iterator(d: int) -> Iterator[tuple[int, int]]:
     """
-    Given an integer d, return an iterator over all pairs
-    of integers (m, n) such that 0 < m < n and m + n == d.
+    Given an integer d, return an iterator over all pairs of integers
+    (m, n) such that 0 < m < n, m + n == d, and m == 5 or m >= 7.
     """
-    for m in range(1, (d + 1) >> 1):
-        n = d - m
-        yield (m, n)
+    # The cases m == 1, 2, 3, 4, and 6 have already been solved for all n,
+    # so we only need to consider m == 5 and m >= 7.
+    for m in range(5, (d + 1) >> 1):
+        if m == 5 or m >= 7:
+            n = d - m
+            yield (m, n)
 
 
 def max_degree_pair_iterator(d: int | None) -> Iterator[tuple[int, int]]:
@@ -127,27 +130,24 @@ def main():
 
     processes: list[tuple[subprocess.Popen[bytes], str, str, str]] = []
     for m, n in max_degree_pair_iterator(int(argv[2]) if len(argv) > 2 else None):
-        # The cases m == 1, 2, 3, 4, and 6 have already been solved for all n,
-        # so we only need to consider m == 5 and m >= 7.
-        if m == 5 or m >= 7:
-            data_path = data_file_path(m, n)
-            if os.path.isfile(data_path):
-                print(data_path, "already computed.")
-            else:
-                while len(processes) >= num_processes:
-                    wait_for_process_to_finish(processes)
-                exe_path = executable_path(m, n)
-                compile(m, n, exe_path)
-                temp_path = data_path + ".temp"
-                print("Computing", data_path + ".")
-                processes.append(
-                    (
-                        subprocess.Popen([exe_path], stdout=open(temp_path, "w")),
-                        exe_path,
-                        temp_path,
-                        data_path,
-                    )
+        data_path = data_file_path(m, n)
+        if os.path.isfile(data_path):
+            print(data_path, "already computed.")
+        else:
+            while len(processes) >= num_processes:
+                wait_for_process_to_finish(processes)
+            exe_path = executable_path(m, n)
+            compile(m, n, exe_path)
+            temp_path = data_path + ".temp"
+            print("Computing", data_path + ".")
+            processes.append(
+                (
+                    subprocess.Popen([exe_path], stdout=open(temp_path, "w")),
+                    exe_path,
+                    temp_path,
+                    data_path,
                 )
+            )
     while processes:
         wait_for_process_to_finish(processes)
 
