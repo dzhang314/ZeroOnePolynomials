@@ -6,8 +6,8 @@ APPLE_CLANG_EXECUTABLE="clang++"
 
 MACRO_DEFINITIONS="-DZERO_ONE_SOLVER_M=14 -DZERO_ONE_SOLVER_N=30 -DZERO_ONE_SOLVER_VERBOSE=false"
 GCC_FLAGS="-Wall -Wextra -pedantic -std=c++20 $MACRO_DEFINITIONS"
-CLANG_FLAGS="-Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic \
--Wno-unsafe-buffer-usage -Wno-poison-system-directories -std=c++20 $MACRO_DEFINITIONS"
+CLANG_FLAGS="-Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-c++20-compat \
+-Wno-unsafe-buffer-usage -Wno-switch-default -Wno-poison-system-directories -std=c++20 $MACRO_DEFINITIONS"
 
 mkdir -p bin
 
