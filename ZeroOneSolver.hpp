@@ -5,15 +5,12 @@
  * See the LICENSE file for full license details.
  ******************************************************************************/
 
-
 #ifndef ZERO_ONE_SOLVER_HPP_INCLUDED
 #define ZERO_ONE_SOLVER_HPP_INCLUDED
 
-#include <bitset>  // for std::bitset
 #include <cassert> // for assert
 #include <cstddef> // for std::byte, std::size_t
 #include <cstdint> // for std::uint8_t
-#include <ostream> // for std::ostream
 #include <utility> // for std::pair
 
 namespace ZeroOneSolver {
@@ -93,21 +90,6 @@ struct Term {
 
 constexpr Term TERM_ZERO = {0xFF, 0xFF};
 constexpr Term TERM_ONE = {0x00, 0x00};
-
-
-inline std::ostream &operator<<(std::ostream &os, const Term &term) {
-    if (term == TERM_ZERO) {
-        os << "0";
-    } else if (term.p_index) {
-        os << "p" << static_cast<int>(term.p_index);
-        if (term.q_index) { os << "*q" << static_cast<int>(term.q_index); }
-    } else if (term.q_index) {
-        os << "q" << static_cast<int>(term.q_index);
-    } else {
-        os << "1";
-    }
-    return os;
-}
 
 
 /******************************************************************************
@@ -250,6 +232,18 @@ struct System {
     }
 
 
+    constexpr VAR get_p(var_index_t i) const noexcept {
+        assert((1 <= i) && (i <= M - 1));
+        return p.get(i - 1);
+    }
+
+
+    constexpr VAR get_q(var_index_t j) const noexcept {
+        assert((1 <= j) && (j <= N - 1));
+        return q.get(j - 1);
+    }
+
+
     constexpr void set_p_zero(var_index_t i) noexcept {
         assert((1 <= i) && (i <= M - 1));
         assert(p.get(i - 1) != VAR::ONE);
@@ -319,31 +313,6 @@ struct System {
             return true;
         }
         return false;
-    }
-
-
-    /**************************************************************************
-     * Because the coefficients of x^M and x^N in P(x) * Q(x) contain the term
-     * 1, we know that all remaining terms in those coefficients must be zero.
-     *
-     *     p_1*q_(M-1) == p_2*q_(M-2) == ... == p_(M-1)*q_1 == q_M == 0
-     *     p_1*q_(N-1) == p_2*q_(N-2) == ... == p_(M-1)*q_(N-M+1) == q_N == 0
-     *
-     * This implies that q_M == q_N == 0, and for each 1 <= i <= M - 1,
-     * p_i == 0 or q_(M-i) == q_(N-i) == 0. Using this observation, we split
-     * our analysis into 2^(M-1) cases corresponding to these binary choices.
-     **************************************************************************/
-    constexpr void set_case(const std::bitset<M - 1> &case_index) noexcept {
-        set_q_zero(M);
-        set_q_zero(N - M);
-        for (var_index_t i = 1; i <= M - 1; ++i) {
-            if (case_index[i - 1]) {
-                set_q_zero(M - i);
-                set_q_zero(N - i);
-            } else {
-                set_p_zero(i);
-            }
-        }
     }
 
 
@@ -428,154 +397,181 @@ struct System {
 
     constexpr bool simplify() noexcept {
 
-        constexpr std::size_t INVALID_INDEX = ~static_cast<std::size_t>(0);
+        while (true) {
 
-    PHASE_ONE:
-        // Phase 1: Deduce right-hand sides and eliminate occurrences of 1.
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
-            // Scan the left-hand side of each equation for nonzero terms
-            // and 1, keeping track of the index at which 1 occurs.
-            bool found_nonzero = false;
-            std::size_t one_index = INVALID_INDEX;
-            for (std::size_t t = 0; t < M + 1; ++t) {
-                const Term term = lhs[e][t];
-                if (term != TERM_ZERO) { found_nonzero = true; }
-                if (term == TERM_ONE) {
-                    // An equation with multiple copies of 1
-                    // on its left-hand side is unsatisfiable.
-                    if (one_index != INVALID_INDEX) { return false; }
-                    one_index = t;
-                }
-            }
-            if (!found_nonzero) {
-                // An equation of the form 0 == 1 is unsatisfiable.
-                if (rhs.get(e) == RHS::ONE) { return false; }
-                // If an equation has no nonzero terms on its left-hand
-                // side, then we set its right-hand side to zero.
-                rhs.set(e, RHS::ZERO);
-            } else if (one_index != INVALID_INDEX) {
-                assert(lhs[e][one_index] == TERM_ONE);
-                // An equation of the form ... + 1 + ... == 0 is unsatisfiable.
-                if (rhs.get(e) == RHS::ZERO) { return false; }
-                // If an equation has 1 on its left-hand side, then we subtract
-                // 1 from both sides, setting the right-hand side to zero.
-                lhs[e][one_index] = TERM_ZERO;
-                rhs.set(e, RHS::ZERO);
-            }
-        }
-        // After Phase 1, we may assume that 1 does not
-        // appear on the left-hand side of any equation.
-
-        // Phase 2: Use right-hand sides to deduce values of variables.
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
-            const RHS rhs_value = rhs.get(e);
-            if (rhs_value == RHS::ZERO) {
-                // If an equation has the form ... + p_i + ... == 0,
-                // then we set p_i to 0. The same holds for q_j.
+            // Phase 1: Deduce right-hand sides and eliminate occurrences of 1.
+            constexpr std::size_t INVALID_INDEX = ~static_cast<std::size_t>(0);
+            for (std::size_t e = 0; e < M + N - 1; ++e) {
+                // Scan the left-hand side of each equation for nonzero terms
+                // and 1, keeping track of the index at which 1 occurs.
+                bool found_nonzero = false;
+                std::size_t one_index = INVALID_INDEX;
                 for (std::size_t t = 0; t < M + 1; ++t) {
                     const Term term = lhs[e][t];
-                    // We know `term.p_index` and `term.q_index` cannot both be
-                    // zero because all occurrences of 1 have been eliminated.
-                    assert(term != TERM_ONE);
-                    if (term.q_index == 0) {
-                        set_p_zero(term.p_index);
-                        goto PHASE_ONE;
-                    } else if (term.p_index == 0) {
-                        set_q_zero(term.q_index);
-                        goto PHASE_ONE;
+                    if (term != TERM_ZERO) { found_nonzero = true; }
+                    if (term == TERM_ONE) {
+                        // An equation with multiple copies of 1
+                        // on its left-hand side is unsatisfiable.
+                        if (one_index != INVALID_INDEX) { return false; }
+                        one_index = t;
                     }
                 }
-            } else if (rhs_value == RHS::ONE) {
-                // If an equation has the form p_i == 1, then we set p_i to 1
-                // in all remaining equations. The same holds for equations of
-                // the form q_j == 1, and in fact, of the form p_i * q_j == 1,
-                // since p_i and q_j are constrained to the interval [0, 1].
-                const Term term = find_unique_nonzero_term(e);
+                if (!found_nonzero) {
+                    // An equation of the form 0 == 1 is unsatisfiable.
+                    if (rhs.get(e) == RHS::ONE) { return false; }
+                    // If we find no nonzero terms on the left-hand side,
+                    // then we set the right-hand side to zero.
+                    rhs.set(e, RHS::ZERO);
+                } else if (one_index != INVALID_INDEX) {
+                    assert(lhs[e][one_index] == TERM_ONE);
+                    // ... + 1 + ... == 0 is unsatisfiable.
+                    if (rhs.get(e) == RHS::ZERO) { return false; }
+                    // If we find 1 on the left-hand side, then we
+                    // eliminate it and set the right-hand side to zero.
+                    lhs[e][one_index] = TERM_ZERO;
+                    rhs.set(e, RHS::ZERO);
+                }
+            }
+            // After Phase 1, we may assume that 1 does not
+            // appear on the left-hand side of any equation.
+
+            // Phase 2: Use right-hand sides to deduce values of variables.
+            bool set_variable = false;
+            for (std::size_t e = 0; e < M + N - 1; ++e) {
+                const RHS rhs_value = rhs.get(e);
+                if (rhs_value == RHS::ZERO) {
+                    // If we see ... + p_i + ... == 0, then we set p_i to 0.
+                    // The same holds for ... + q_j + ... == 0.
+                    for (std::size_t t = 0; t < M + 1; ++t) {
+                        const Term term = lhs[e][t];
+                        assert(term != TERM_ONE);
+                        if (term.q_index == 0) { // p_i
+                            set_p_zero(term.p_index);
+                            set_variable = true;
+                        } else if (term.p_index == 0) { // q_j
+                            set_q_zero(term.q_index);
+                            set_variable = true;
+                        }
+                        if (set_variable) { break; }
+                    }
+                } else if (rhs_value == RHS::ONE) {
+                    // If we see p_i == 1, then we set p_i to 1. The same holds
+                    // for q_j == 1 and p_i*q_j == 1 (since p_i and q_j are
+                    // constrained to the interval [0, 1]).
+                    const Term term = find_unique_nonzero_term(e);
+                    assert(term != TERM_ONE);
+                    if (term != TERM_ZERO) {
+                        if (term.p_index) { set_p_one(term.p_index); }
+                        if (term.q_index) { set_q_one(term.q_index); }
+                        set_variable = true;
+                    }
+                }
+                if (set_variable) { break; }
+            }
+
+            // Setting a variable in Phase 2 can enable further
+            // simplification. If this occurs, we repeat Phase 1.
+            if (set_variable) { continue; }
+
+            // If no variables were set in Phase 2, then we proceed to Phase 3.
+            break;
+        }
+
+        // At this point, we cannot determine the values of any more variables
+        // or right-hand sides. However, it is still possible to conclude that
+        // a variable must be either 0 or 1 without determining which value
+        // it actually takes. We call this process "eliminating unknowns."
+
+        while (true) {
+
+            // Phase 3: Eliminate unknown variables by all-but-one principle.
+            bool eliminated = false;
+            for (std::size_t e = 0; e < M + N - 1; ++e) {
+                // If every term in an equation except one is already known
+                // to be 0 or 1, then the remaining term must also be 0 or 1.
+                const Term term = find_unique_unknown_term(e);
                 assert(term != TERM_ONE);
                 if (term != TERM_ZERO) {
-                    if (term.p_index) { set_p_one(term.p_index); }
-                    if (term.q_index) { set_q_one(term.q_index); }
-                    goto PHASE_ONE;
-                }
-            }
-        }
-
-        bool eliminated_unknown;
-        Term lone_terms[M + N - 1];
-        std::size_t t;
-
-    PHASE_THREE:
-        // Phase 3: Eliminate unknown variables using all-but-one principle.
-        eliminated_unknown = false;
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
-            // If every term in an equation except one is already known
-            // to be 0 or 1, then the remaining term must also be 0 or 1.
-            const Term term = find_unique_unknown_term(e);
-            assert(term != TERM_ONE);
-            if (term != TERM_ZERO) {
-                assert(is_unknown(term));
-                if (term.q_index == 0) { // p_i
-                    eliminated_unknown |= set_p_zero_or_one(term.p_index);
-                } else if (term.p_index == 0) { // q_j
-                    eliminated_unknown |= set_q_zero_or_one(term.q_index);
-                }
-            }
-        }
-        if (!has_unknown_variable()) { return true; }
-        if (eliminated_unknown) { goto PHASE_THREE; }
-
-        // Phase 4: Eliminate unknown variables in subsystems of the form:
-        //     v*w == 0 or 1
-        //     v + w == 0 or 1
-        // The only real solutions of this subsystem are (v, w) == (0, 0),
-        // (1, 0), or (1, 1), so we deduce that v and w are both 0 or 1.
-
-        // Phase 4.1: Find equations of the form v*w == 0 or 1.
-        t = 0;
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
-            // Note that an equation of the form ... + v*w + ... == 0 or 1,
-            // where v*w is the only unknown term, is sufficient to conclude
-            // that v*w == 0 or 1.
-            const Term term = find_unique_unknown_term(e);
-            assert(term != TERM_ONE);
-            if (term != TERM_ZERO) {
-                assert(is_unknown(term));
-                // At this point, any unique unknown term must have the form
-                // p_i*q_j, since any unique unknown term of the form p_i or
-                // q_j would have been eliminated in Phase 3.
-                assert(term.p_index);
-                assert(term.q_index);
-                lone_terms[t++] = term;
-            }
-        }
-
-        // Phase 4.2: Find equations of the form v + w == 0 or 1.
-        for (std::size_t e = 0; e < M + N - 1; ++e) {
-            const auto [x, y] = find_two_nonzero_terms(e);
-            if (y != TERM_ZERO) {
-                assert(x != TERM_ZERO);
-                if ((x.q_index == 0) && (y.p_index == 0)) { // p_x*q_y
-                    assert(x.p_index);
-                    assert(y.q_index);
-                    if (contains_term(lone_terms, t, {x.p_index, y.q_index})) {
-                        eliminated_unknown |= set_p_zero_or_one(x.p_index);
-                        eliminated_unknown |= set_q_zero_or_one(y.q_index);
-                    }
-                } else if ((x.p_index == 0) && (y.q_index == 0)) { // p_y*q_x
-                    assert(x.q_index);
-                    assert(y.p_index);
-                    if (contains_term(lone_terms, t, {y.p_index, x.q_index})) {
-                        eliminated_unknown |= set_p_zero_or_one(y.p_index);
-                        eliminated_unknown |= set_q_zero_or_one(x.q_index);
+                    assert(is_unknown(term));
+                    if (term.q_index == 0) { // p_i
+                        eliminated |= set_p_zero_or_one(term.p_index);
+                    } else if (term.p_index == 0) { // q_j
+                        eliminated |= set_q_zero_or_one(term.q_index);
                     }
                 }
             }
-        }
-        if (!has_unknown_variable()) { return true; }
-        if (eliminated_unknown) { goto PHASE_THREE; }
+            if (eliminated) {
+                if (has_unknown_variable()) {
+                    // Eliminating one unknown can enable further elimination.
+                    // If this occurred, we repeat Phase 3.
+                    continue;
+                } else {
+                    // If no unknowns remain, then simplification is complete.
+                    return true;
+                }
+            }
 
-        // At this point, no further simplification is possible.
-        return true;
+            // Phase 4: Eliminate unknown variables in subsystems of the form:
+            //     v*w == 0 or 1
+            //     v + w == 0 or 1
+            // The only real solutions of this subsystem are (v, w) == (0, 0),
+            // (1, 0), or (1, 1), so we deduce that v and w are both 0 or 1.
+
+            // Phase 4.1: Find equations of the form v*w == 0 or 1.
+            Term lone_terms[M + N - 1];
+            std::size_t t = 0;
+            for (std::size_t e = 0; e < M + N - 1; ++e) {
+                // If v*w is the only unknown term in the equation
+                // ... + v*w + ... == 0 or 1, then v*w == 0 or 1.
+                const Term term = find_unique_unknown_term(e);
+                assert(term != TERM_ONE);
+                if (term != TERM_ZERO) {
+                    assert(is_unknown(term));
+                    // In Phase 4, all unique unknown terms have the form
+                    // p_i*q_j, since any unique unknown term of the form
+                    // p_i or q_j would have been eliminated in Phase 3.
+                    assert(term.p_index);
+                    assert(term.q_index);
+                    lone_terms[t++] = term;
+                }
+            }
+
+            // Phase 4.2: Find equations of the form v + w == 0 or 1.
+            for (std::size_t e = 0; e < M + N - 1; ++e) {
+                const auto [x, y] = find_two_nonzero_terms(e);
+                if (y != TERM_ZERO) {
+                    assert(x != TERM_ZERO);
+                    if ((x.q_index == 0) && (y.p_index == 0)) { // p_x*q_y
+                        assert(x.p_index);
+                        assert(y.q_index);
+                        if (contains_term(
+                                lone_terms, t, {x.p_index, y.q_index}
+                            )) {
+                            eliminated |= set_p_zero_or_one(x.p_index);
+                            eliminated |= set_q_zero_or_one(y.q_index);
+                        }
+                    } else if ((x.p_index == 0) &&
+                               (y.q_index == 0)) { // p_y*q_x
+                        assert(x.q_index);
+                        assert(y.p_index);
+                        if (contains_term(
+                                lone_terms, t, {y.p_index, x.q_index}
+                            )) {
+                            eliminated |= set_p_zero_or_one(y.p_index);
+                            eliminated |= set_q_zero_or_one(x.q_index);
+                        }
+                    }
+                }
+            }
+            if (eliminated && has_unknown_variable()) {
+                // Eliminating one unknown can enable further elimination.
+                // If this occurred, we repeat Phase 3.
+                continue;
+            }
+
+            // At this point, no more unknowns can be eliminated.
+            return true;
+        }
     }
 
 
