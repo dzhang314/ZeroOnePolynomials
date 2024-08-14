@@ -33,24 +33,21 @@ constexpr var_index_t N = ZERO_ONE_SOLVER_N;
 #endif
 
 
+// clang-format off
+constexpr bool SKIP_ZERO_TERMS = true;
+constexpr bool SKIP_ZERO_EQUATIONS = true;
+
+
 static std::ostream &operator<<(std::ostream &os, const Term &term) {
-    if (term == TERM_ZERO) {
-        os << '0';
-    } else if (term.p_index) {
-        os << 'p' << static_cast<int>(term.p_index);
-        if (term.q_index) { os << "*q" << static_cast<int>(term.q_index); }
-    } else if (term.q_index) {
-        os << 'q' << static_cast<int>(term.q_index);
-    } else {
-        os << '1';
-    }
+    if (term == TERM_ZERO) { os << '0'; }
+    else if (term.p_index) { os << 'p' << static_cast<int>(term.p_index);
+        if (term.q_index) { os << "*q" << static_cast<int>(term.q_index); } }
+    else if (term.q_index) { os << 'q' << static_cast<int>(term.q_index); }
+    else { os << '1'; }
     return os;
 }
 
 
-// clang-format off
-constexpr bool SKIP_ZERO_TERMS = true;
-constexpr bool SKIP_ZERO_EQUATIONS = true;
 static std::ostream &operator<<(std::ostream &os, const System<M, N> &system) {
     for (std::size_t e = 0; e < M + N - 3; ++e) {
         bool first = true;
@@ -142,7 +139,6 @@ static void print_leaf_system(const System<M, N> &system) {
             }
         }
     }
-    std::cout << '\n';
 }
 
 
@@ -171,10 +167,9 @@ find_case_split(std::vector<System<M, N>> &stack, const System<M, N> &system) {
         }
     }
 
+    // Phase 2: Split ... + p_i*q_j + ... == 0 into p_i == 0 and q_j == 0.
     for (std::size_t e = 0; e < M + N - 3; ++e) {
-        const RHS rhs_value = system.rhs.get(e);
-        if (rhs_value == RHS::ZERO) {
-            // ... + p_i*q_j + ... == 0
+        if (system.rhs.get(e) == RHS::ZERO) {
             for (std::size_t t = 0; t < M + 1; ++t) {
                 const Term term = system.lhs[e][t];
                 if (term != TERM_ZERO) {
@@ -188,13 +183,18 @@ find_case_split(std::vector<System<M, N>> &stack, const System<M, N> &system) {
                     return true;
                 }
             }
-        } else if (rhs_value == RHS::ZERO_OR_ONE) {
-            // p_i*q_j == 0 or 1
+        }
+    }
+
+    // Phase 3: Split p_i*q_j == 0 or 1 into
+    // p_i == 0, q_j == 0, and p_i == q_j == 1.
+    for (std::size_t e = 0; e < M + N - 3; ++e) {
+        if (system.rhs.get(e) == RHS::ZERO_OR_ONE) {
             const Term term = system.find_unique_nonzero_term(e);
             if (term != TERM_ZERO) {
                 // Any remaining unique nonzero term must have the form p_i*q_j
                 // because case splits on p_i == 0 or 1 and q_j == 0 or 1 have
-                // already been performed in the previous step.
+                // already been performed in Phase 1.
                 stack.push_back(system);
                 stack.back().set_p_one(term.p_index);
                 stack.back().set_q_one(term.q_index);
@@ -207,7 +207,7 @@ find_case_split(std::vector<System<M, N>> &stack, const System<M, N> &system) {
         }
     }
 
-    // ... == 0 or 1
+    // Phase 4: Split LHS == 0 or 1 into LHS == 0 and LHS == 1.
     for (std::size_t e = 0; e < M + N - 3; ++e) {
         if (system.rhs.get(e) == RHS::ZERO_OR_ONE) {
             stack.push_back(system);
@@ -260,7 +260,10 @@ static void analyze(const std::bitset<M - 1> &case_id) {
         System<M, N> system = stack.back();
         stack.pop_back();
         if (system.simplify() && system.has_unknown_variable()) {
-            if (!find_case_split(stack, system)) { print_leaf_system(system); }
+            if (!find_case_split(stack, system)) {
+                print_leaf_system(system);
+                std::cout << '\n';
+            }
         }
     }
 }
