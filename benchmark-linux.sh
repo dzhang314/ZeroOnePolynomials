@@ -4,9 +4,9 @@ GCC_EXECUTABLE="g++"
 CLANG_EXECUTABLE="clang++"
 
 MACRO_DEFINITIONS="-DZERO_ONE_SOLVER_M=14 -DZERO_ONE_SOLVER_N=30 -DZERO_ONE_SOLVER_VERBOSE=false"
-GCC_FLAGS="-Wall -Wextra -pedantic -std=c++23 $MACRO_DEFINITIONS"
+GCC_FLAGS="-Wall -Wextra -pedantic -std=c++20 $MACRO_DEFINITIONS"
 CLANG_FLAGS="-Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic \
--Wno-unsafe-buffer-usage -std=c++23 $MACRO_DEFINITIONS"
+-Wno-unsafe-buffer-usage -std=c++20 $MACRO_DEFINITIONS"
 
 mkdir -p bin
 

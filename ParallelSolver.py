@@ -76,7 +76,7 @@ def compile(m: int, n: int, output_path: str):
             "-Wall",
             "-Wextra",
             "-pedantic",
-            "-std=c++23",
+            "-std=c++20",
             "-O3",
             "-march=native",
             "-fwhole-program",
