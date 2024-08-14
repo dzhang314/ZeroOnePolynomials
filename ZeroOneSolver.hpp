@@ -518,7 +518,7 @@ struct System {
             // (1, 0), or (1, 1), so we deduce that v and w are both 0 or 1.
 
             // Phase 4.1: Find equations of the form v*w == 0 or 1.
-            Term lone_terms[M + N - 1];
+            Term unique[M + N - 1];
             std::size_t t = 0;
             for (std::size_t e = 0; e < M + N - 1; ++e) {
                 // If v*w is the only unknown term in the equation
@@ -532,7 +532,7 @@ struct System {
                     // p_i or q_j would have been eliminated in Phase 3.
                     assert(term.p_index);
                     assert(term.q_index);
-                    lone_terms[t++] = term;
+                    unique[t++] = term;
                 }
             }
 
@@ -544,9 +544,7 @@ struct System {
                     if ((x.q_index == 0) && (y.p_index == 0)) { // p_x*q_y
                         assert(x.p_index);
                         assert(y.q_index);
-                        if (contains_term(
-                                lone_terms, t, {x.p_index, y.q_index}
-                            )) {
+                        if (contains_term(unique, t, {x.p_index, y.q_index})) {
                             eliminated |= set_p_zero_or_one(x.p_index);
                             eliminated |= set_q_zero_or_one(y.q_index);
                         }
@@ -554,9 +552,7 @@ struct System {
                                (y.q_index == 0)) { // p_y*q_x
                         assert(x.q_index);
                         assert(y.p_index);
-                        if (contains_term(
-                                lone_terms, t, {y.p_index, x.q_index}
-                            )) {
+                        if (contains_term(unique, t, {y.p_index, x.q_index})) {
                             eliminated |= set_p_zero_or_one(y.p_index);
                             eliminated |= set_q_zero_or_one(x.q_index);
                         }
