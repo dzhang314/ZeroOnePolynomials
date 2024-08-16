@@ -30,6 +30,14 @@ def find_gcc_executable() -> str:
         ]
         if candidates:
             return os.path.join("/opt/homebrew/bin", sorted(candidates)[-1])
+    if os.path.isdir("/usr/bin"):
+        candidates = [
+            filename
+            for filename in os.listdir("/usr/bin")
+            if filename.startswith("g++")
+        ]
+        if candidates:
+            return os.path.join("/usr/bin", sorted(candidates)[-1])
     return "g++"
 
 
