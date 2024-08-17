@@ -9,12 +9,12 @@ Do[Print["Reading file: ", filename, "\n"];
 		Do[With[{s = systems[[i]]}, Block[{time, result, mem},
 			mem = MaxMemoryUsed[{time, result} = AbsoluteTiming[
 				TimeConstrained[CylindricalDecomposition[
-					(# == 1)& /@ s, Variables[s]], 0.25]]];
+					(# == 1)& /@ s, Variables[s]], 1.0]]];
 			Which[result === $Aborted,
 				Print["Failed to solve system ", i, " of ",
 					Length[systems], " from file: ", filename];
 				Print["Took ", time, " seconds and ",
-					mem, " bytes of memory."],
+					mem, " bytes of memory.\n"],
 			result =!= False,
 				Print["FOUND COUNTEREXAMPLE!"];
 				Print["SYSTEM ", i, " IN FILE: ", filename];
@@ -24,6 +24,6 @@ Do[Print["Reading file: ", filename, "\n"];
 				Print["Solved system ", i, " of ",
 					Length[systems], " from file: ", filename];
 				Print["Took ", time, " seconds and ",
-					mem, " bytes of memory."]]]],
+					mem, " bytes of memory.\n"]]]],
 			{i, Length[systems]}]],
 	{filename, FileNames["data/WeaklyCanonizedEquations-*.txt"]}];
