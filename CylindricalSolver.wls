@@ -1,23 +1,33 @@
 #!/usr/bin/env wolframscript
 (* ::Package:: *)
 
-ImportSystems[path_String] :=
-	ToExpression@StringSplit[StringSplit[Import[path], "\n\n"], "\n"];
+ImportSystems[path_String] := ToExpression[
+	Import[path, "Text"] ~StringSplit~ "\n\n" ~StringSplit~ "\n"];
 
-Do[
-	Print["Reading file ", filename, "..."];
+Do[Print["Reading file: ", filename, "\n"];
 	With[{systems = ImportSystems[filename]},
-		Print["Successfully loaded ", Length[systems], " systems."];
-		Do[With[{s = systems[[i]]},
-			With[{result = AbsoluteTiming[CylindricalDecomposition[(# == 1)& /@ s, Variables[s]]]},
-				If[result[[2]] === False,
-					Print["Solved system ", i, " of ", Length[systems], " in ", result[[1]], " seconds."],
-					Print["FOUND COUNTEREXAMPLE AT SYSTEM ", i, " IN FILE ", filename, "!"];
-					Print /@ s;
-					Quit[]
-				]
-			]
-		], {i, Length[systems]}]
-	],
-	{filename, $ScriptCommandLine[[2;;]]}
-];
+		Do[With[{s = systems[[i]]}, Block[{time, result, mem},
+			mem = MaxMemoryUsed[{time, result} = AbsoluteTiming[
+				TimeConstrained[CylindricalDecomposition[
+					(# == 1)& /@ s, Variables[s]], 1.0]]];
+			Which[result === $Aborted,
+				Print["Failed to solve system ", i, " of ",
+					Length[systems], " from file: ", filename];
+				Print["Took ", time, " seconds and ",
+					mem, " bytes of memory."];
+				Print["Memory remaining: ",
+					MemoryAvailable[], " bytes.\n"],
+			result === False,
+				Print["FOUND COUNTEREXAMPLE!"];
+				Print["SYSTEM ", i, " IN FILE: ", filename];
+				Print /@ s;
+				Quit[],
+			True,
+				Print["Solved system ", i, " of ",
+					Length[systems], " from file: ", filename];
+				Print["Took ", time, " seconds and ",
+					mem, " bytes of memory."];
+				Print["Memory remaining: ",
+					MemoryAvailable[], " bytes.\n"]]]],
+			{i, Length[systems]}]],
+	{filename, FileNames["data/WeaklyCanonizedEquations-*.txt"]}]
