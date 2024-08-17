@@ -17,7 +17,7 @@ Do[Print["Reading file: ", filename, "\n"];
 					mem, " bytes of memory."];
 				Print["Memory remaining: ",
 					MemoryAvailable[], " bytes.\n"],
-			result === False,
+			result =!= False,
 				Print["FOUND COUNTEREXAMPLE!"];
 				Print["SYSTEM ", i, " IN FILE: ", filename];
 				Print /@ s;
