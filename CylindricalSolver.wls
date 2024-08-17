@@ -24,6 +24,6 @@ Do[Print["Reading file: ", filename, "\n"];
 				Print["Solved system ", i, " of ",
 					Length[systems], " from file: ", filename];
 				Print["Took ", time, " seconds and ",
-					mem, " bytes of memory."];
-			{i, Length[systems]}]],
-	{filename, FileNames["data/WeaklyCanonizedEquations-*.txt"]}]
+					mem, " bytes of memory."]]]],
+			{i, Length[systems]}],
+	{filename, FileNames["data/WeaklyCanonizedEquations-*.txt"]}]];
