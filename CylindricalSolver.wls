@@ -14,7 +14,7 @@ Do[Print["Reading file: ", filename, "\n"];
 				Print["Failed to solve system ", i, " of ",
 					Length[systems], " from file: ", filename];
 				Print["Took ", time, " seconds and ",
-					mem, " bytes of memory."];
+					mem, " bytes of memory."],
 			result =!= False,
 				Print["FOUND COUNTEREXAMPLE!"];
 				Print["SYSTEM ", i, " IN FILE: ", filename];
@@ -25,5 +25,5 @@ Do[Print["Reading file: ", filename, "\n"];
 					Length[systems], " from file: ", filename];
 				Print["Took ", time, " seconds and ",
 					mem, " bytes of memory."]]]],
-			{i, Length[systems]}],
-	{filename, FileNames["data/WeaklyCanonizedEquations-*.txt"]}]];
+			{i, Length[systems]}]],
+	{filename, FileNames["data/WeaklyCanonizedEquations-*.txt"]}];
