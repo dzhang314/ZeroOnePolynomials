@@ -1,6 +1,6 @@
 #!/bin/sh
 
-GCC_EXECUTABLE="/opt/homebrew/bin/g++-14"
+GCC_EXECUTABLE="/opt/homebrew/bin/g++-15"
 CLANG_EXECUTABLE="/opt/homebrew/opt/llvm/bin/clang++"
 APPLE_CLANG_EXECUTABLE="clang++"
 
