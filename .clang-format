@@ -1,0 +1,9 @@
+IndentWidth: 4
+MaxEmptyLinesToKeep: 2
+AccessModifierOffset: -4
+EmptyLineAfterAccessModifier: Always
+AllowShortBlocksOnASingleLine: Always
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+BreakConstructorInitializers: BeforeComma
+BreakTemplateDeclarations: Yes

@@ -144,8 +144,8 @@ static void print_leaf_system(const System<M, N> &system) {
 }
 
 
-static bool
-find_case_split(std::vector<System<M, N>> &stack, const System<M, N> &system) {
+static bool find_case_split(std::vector<System<M, N>> &stack,
+                            const System<M, N> &system) {
 
     // Phase 1.1: Split p_i == 0 or 1 into p_i == 0 and p_i == 1.
     for (var_index_t i = 1; i <= M - 1; ++i) {

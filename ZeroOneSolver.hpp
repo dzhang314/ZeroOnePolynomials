@@ -344,7 +344,10 @@ struct System {
         for (std::size_t t = 0; t < M + 1; ++t) {
             const Term term = lhs[e][t];
             if (term != TERM_ZERO) {
-                if (result != TERM_ZERO) { return TERM_ZERO; }
+                if (result != TERM_ZERO) {
+                    result = TERM_ZERO;
+                    break;
+                }
                 result = term;
             }
         }
@@ -357,7 +360,10 @@ struct System {
         for (std::size_t t = 0; t < M + 1; ++t) {
             const Term term = lhs[e][t];
             if (is_unknown(term)) {
-                if (result != TERM_ZERO) { return TERM_ZERO; }
+                if (result != TERM_ZERO) {
+                    result = TERM_ZERO;
+                    break;
+                }
                 result = term;
             }
         }
@@ -365,10 +371,11 @@ struct System {
     }
 
 
-    constexpr std::pair<Term, Term> find_two_nonzero_terms(std::size_t e
-    ) const noexcept {
-        Term first = TERM_ZERO;
-        Term second = TERM_ZERO;
+    constexpr std::pair<Term, Term>
+    find_two_nonzero_terms(std::size_t e) const noexcept {
+        std::pair<Term, Term> result = {TERM_ZERO, TERM_ZERO};
+        Term &first = result.first;
+        Term &second = result.second;
         for (std::size_t t = 0; t < M + 1; ++t) {
             const Term term = lhs[e][t];
             if (term != TERM_ZERO) {
@@ -377,17 +384,18 @@ struct System {
                 } else if (second == TERM_ZERO) {
                     second = term;
                 } else {
-                    return {TERM_ZERO, TERM_ZERO};
+                    first = TERM_ZERO;
+                    second = TERM_ZERO;
+                    break;
                 }
             }
         }
-        return {first, second};
+        return result;
     }
 
 
-    static constexpr bool contains_term(
-        const Term *array, std::size_t size, const Term &term
-    ) noexcept {
+    static constexpr bool contains_term(const Term *array, std::size_t size,
+                                        const Term &term) noexcept {
         for (std::size_t i = 0; i < size; ++i) {
             if (array[i] == term) { return true; }
         }
