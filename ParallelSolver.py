@@ -93,7 +93,6 @@ def compile(m: int, n: int, output_path: str):
             "-fwhole-program",
             "-DZERO_ONE_SOLVER_M=" + str(m),
             "-DZERO_ONE_SOLVER_N=" + str(n),
-            "-DZERO_ONE_SOLVER_VERBOSE=false",
             "ZeroOneSolver.cpp",
             "-o",
             output_path,
