@@ -81,7 +81,7 @@ def data_file_path(m: int, n: int) -> str:
 def compile(m: int, n: int, output_path: str):
     if os.path.isfile(output_path):
         os.remove(output_path)
-    subprocess.run(
+    _ = subprocess.run(
         [
             GCC_EXECUTABLE,
             "-Wall",
@@ -104,7 +104,7 @@ def compile(m: int, n: int, output_path: str):
 
 
 def wait_for_process_to_finish(
-    processes: list[tuple[subprocess.Popen[bytes], str, str, str]]
+    processes: list[tuple[subprocess.Popen[bytes], str, str, str]],
 ):
     while True:
         for k in range(len(processes)):

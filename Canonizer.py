@@ -134,8 +134,8 @@ def main():
                     canonized_systems[system] += 1
                 else:
                     canonized_systems[system] = 1
-                    file.write(wolfram_string(system))
-                    file.write("\n\n")
+                    _ = file.write(wolfram_string(system))
+                    _ = file.write("\n\n")
 
 
 if __name__ == "__main__":
