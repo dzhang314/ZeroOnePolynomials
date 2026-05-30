@@ -22,6 +22,8 @@ using ZeroOneSolver::var_index_t;
 
 
 #ifdef ZERO_ONE_SOLVER_M
+static_assert(ZERO_ONE_SOLVER_M > 1);
+static_assert(ZERO_ONE_SOLVER_M < 255);
 constexpr var_index_t M = ZERO_ONE_SOLVER_M;
 #else
 #error "ZERO_ONE_SOLVER_M must be defined."
@@ -29,6 +31,8 @@ constexpr var_index_t M = ZERO_ONE_SOLVER_M;
 
 
 #ifdef ZERO_ONE_SOLVER_N
+static_assert(ZERO_ONE_SOLVER_N > ZERO_ONE_SOLVER_M);
+static_assert(ZERO_ONE_SOLVER_N < 256);
 constexpr var_index_t N = ZERO_ONE_SOLVER_N;
 #else
 #error "ZERO_ONE_SOLVER_N must be defined."
