@@ -515,7 +515,7 @@ struct System {
             //     v*w == 0 or 1
             //     v + w == 0 or 1
             // The only real solutions of this subsystem are (v, w) == (0, 0),
-            // (1, 0), or (1, 1), so we deduce that v and w are both 0 or 1.
+            // (0, 1), or (1, 0), so we deduce that v and w are both 0 or 1.
 
             // Phase 4.1: Find equations of the form v*w == 0 or 1.
             Term unique[M + N - 3];
