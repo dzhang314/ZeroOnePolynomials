@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2023-2024 David K. Zhang
+ * Copyright (c) 2023-2026 David K. Zhang
  * This file is part of ZeroOnePolynomials by David K. Zhang.
  * ZeroOnePolynomials is distributed under the terms of the MIT license.
  * See the LICENSE file for full license details.
