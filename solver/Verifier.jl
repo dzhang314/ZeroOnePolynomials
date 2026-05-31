@@ -1,7 +1,7 @@
 #!/usr/bin/env julia
 
 using AbstractAlgebra: QQ, polynomial_ring
-using Groebner: DegRevLex, groebner_with_change_matrix
+using Groebner: groebner_with_change_matrix
 using NautyGraphs: NautyGraph, add_edge!, canonize!, edges
 using Printf: @sprintf
 
@@ -118,7 +118,7 @@ function has_no_solution(system::Vector{Vector{Tuple{Int,Int}}})
     p_max = maximum(p for equation in system for (p, q) in equation)
     q_max = maximum(q for equation in system for (p, q) in equation)
     names = vcat(Symbol.('p', 1:p_max), Symbol.('q', 1:q_max))
-    _, vars = polynomial_ring(QQ, names)
+    _, vars = polynomial_ring(QQ, names; internal_ordering=:degrevlex)
     polynomials = map(system) do equation
         polynomial = -1
         for (p, q) in equation
@@ -134,9 +134,13 @@ function has_no_solution(system::Vector{Vector{Tuple{Int,Int}}})
         end
         return polynomial
     end
-    _, matrix = groebner_with_change_matrix(polynomials;
-        certify=true, linalg=:deterministic, ordering=DegRevLex())
-    return matrix * polynomials == [1]
+    for seed = 1:10
+        _, matrix = groebner_with_change_matrix(polynomials; seed)
+        if matrix * polynomials == [1]
+            return true
+        end
+    end
+    return false
 end
 
 
