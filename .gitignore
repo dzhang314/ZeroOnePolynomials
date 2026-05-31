@@ -1,8 +1,3 @@
-/.vscode/
-/__pycache__/
-/bin/g++*
-/bin/clang++*
+/.lake/
 /bin/ZeroOneSolver-*-*
 /data/ZeroOneEquations-*-*-*.txt
-/data/WeaklyCanonizedEquations-*.txt
-/data/*.temp
