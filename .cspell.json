@@ -2,10 +2,16 @@
     "words": [
         "coeff",
         "DZERO",
+        "fwhole",
+        "groebner",
         "leanprover",
+        "linalg",
         "mathlib",
         "monic",
+        "nauty",
+        "sprintf",
         "Weverything",
+        "Wextra",
         "Zhang"
     ]
 }
