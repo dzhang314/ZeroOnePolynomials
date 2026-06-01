@@ -63,10 +63,9 @@ def RestrictedConjecture (P Q : ℝ[X]) : Prop :=
 /-- Mathlib defines the _trailing degree_ of a polynomial to be the index of
     its lowest-degree nonzero coefficient. This is precisely the largest
     natural number $`k ∈ ℕ` such that $`X^k` divides $`P(X)`. -/
-theorem trailing_degree_divides (P : ℝ[X]) : X^(natTrailingDegree P) ∣ P := by
-  rw [Polynomial.X_pow_dvd_iff]
-  intro d Hd
-  exact Polynomial.coeff_eq_zero_of_lt_natTrailingDegree Hd
+theorem trailing_degree_divides (P : ℝ[X]) : X^(natTrailingDegree P) ∣ P :=
+  Polynomial.X_pow_dvd_iff.mpr
+    (fun _ H => Polynomial.coeff_eq_zero_of_lt_natTrailingDegree H)
 
 /-!
 To show that the restricted conjecture implies the full conjecture, we will
@@ -84,14 +83,12 @@ theorem mul_pow_monic (H : Monic (X^k * P)) : Monic P := by
   simpa! [Monic] using H
 
 theorem mul_pow_nonnegative (H : HasNonnegativeCoefficients (X^k * P)) :
-    HasNonnegativeCoefficients P := by
-  intro n
-  simpa using H (n + k)
+    HasNonnegativeCoefficients P :=
+  fun n => Polynomial.coeff_X_pow_mul P k n ▸ H (n + k)
 
 theorem mul_pow_zero_one (H : IsZeroOnePolynomial (X^k * P)) :
-    IsZeroOnePolynomial P := by
-  intro n
-  simpa using H (n + k)
+    IsZeroOnePolynomial P :=
+  fun n => Polynomial.coeff_X_pow_mul P k n ▸ H (n + k)
 
 theorem zero_one_mul_pow (H : IsZeroOnePolynomial P) :
     IsZeroOnePolynomial (X^k * P) := by
@@ -109,18 +106,15 @@ theorem constant_term_upper_bound {P Q : ℝ[X]}
     (HQN : HasNonnegativeCoefficients Q)
     (HPQ01 : IsZeroOnePolynomial (P * Q)) :
     (coeff Q 0 ≤ 1) := by
-  have C1 : coeff (P * Q) (natDegree P) ≤ 1 := by
-    cases HPQ01 (natDegree P) with
-    | inl h => rw [h]; exact zero_le_one
-    | inr h => rw [h]
-  have C2 : coeff Q 0 ≤ coeff (P * Q) (natDegree P) := by
+  have C1 : coeff Q 0 ≤ coeff (P * Q) (natDegree P) := by
     rw [Polynomial.coeff_mul]
-    have C3 : (P.natDegree, 0) ∈ Finset.antidiagonal P.natDegree := by simp
-    have C4 : ∀ x ∈ Finset.antidiagonal P.natDegree,
-        0 ≤ (coeff P x.1) * (coeff Q x.2) :=
+    let slice := Finset.antidiagonal (natDegree P)
+    have C2 : ∀ x ∈ slice, 0 ≤ (coeff P x.1) * (coeff Q x.2) :=
       fun x _ => mul_nonneg (HPN x.1) (HQN x.2)
-    simpa [HPM] using Finset.single_le_sum C4 C3
-  exact le_trans C2 C1
+    have C3 : (natDegree P, 0) ∈ slice := Finset.mem_antidiagonal.mpr rfl
+    simpa [HPM] using Finset.single_le_sum C2 C3
+  exact le_trans C1 (Or.elim
+    (HPQ01 (natDegree P)) (· ▸ zero_le_one) (· ▸ le_rfl))
 
 theorem constant_term_is_one {P Q : ℝ[X]}
     (HPM : Monic P)
@@ -131,28 +125,27 @@ theorem constant_term_is_one {P Q : ℝ[X]}
     (HP0 : coeff P 0 > 0) (HQ0 : coeff Q 0 > 0) :
     ((coeff P 0 = 1) ∧ (coeff Q 0 = 1)) := by
   have : coeff P 0 ≤ 1 :=
-    constant_term_upper_bound HQM HQN HPN (by rwa [mul_comm])
+    constant_term_upper_bound HQM HQN HPN (mul_comm P Q ▸ HPQ01)
   have : coeff Q 0 ≤ 1 :=
     constant_term_upper_bound HPM HPN HQN HPQ01
-  have CPQ : ((coeff P 0) * (coeff Q 0) = 0) ∨
-             ((coeff P 0) * (coeff Q 0) = 1) := by
-    simpa [Polynomial.mul_coeff_zero] using HPQ01 0
-  cases CPQ
-  · linarith [mul_pos HP0 HQ0]
-  · constructor <;> nlinarith
+  have : coeff P 0 * coeff Q 0 = 1 :=
+    Or.resolve_left (Polynomial.mul_coeff_zero P Q ▸ HPQ01 0)
+      (ne_of_gt (mul_pos HP0 HQ0))
+  constructor <;> nlinarith
 
 theorem trailing_coeff_positive {P : ℝ[X]}
     (HPN : HasNonnegativeCoefficients P)
     (HP : P ≠ 0) :
     coeff P (natTrailingDegree P) > 0 :=
-  lt_of_le_of_ne (HPN _) (Ne.symm (mt Polynomial.trailingCoeff_eq_zero.mp HP))
+  lt_of_le_of_ne (HPN (natTrailingDegree P))
+    (Ne.symm (mt Polynomial.trailingCoeff_eq_zero.mp HP))
 
 theorem restricted_implies_full :
     (∀ P Q : ℝ[X], RestrictedConjecture P Q) ->
     (∀ P Q : ℝ[X], ZeroOnePolynomialConjecture P Q) := by
   intro HRC P Q HPM HQM HPN HQN HPQ01
-  let tdP := P.natTrailingDegree
-  let tdQ := Q.natTrailingDegree
+  let tdP := natTrailingDegree P
+  let tdQ := natTrailingDegree Q
   have ⟨P', CP⟩ := trailing_degree_divides P
   have ⟨Q', CQ⟩ := trailing_degree_divides Q
   have CPM' : Monic P' := mul_pow_monic (CP ▸ HPM)
@@ -161,18 +154,17 @@ theorem restricted_implies_full :
   have CQN' : HasNonnegativeCoefficients Q' := mul_pow_nonnegative (CQ ▸ HQN)
   have CPQ : P * Q = X^(tdP + tdQ) * (P' * Q') := by rw [CP, CQ]; ring
   have CPQ01' : IsZeroOnePolynomial (P' * Q') := mul_pow_zero_one (CPQ ▸ HPQ01)
-  have CP0' : coeff P' 0 > 0 := by
-    have : coeff P tdP = coeff P' 0 := by
-      rw [CP, ← zero_add tdP, Polynomial.coeff_X_pow_mul]
-    exact this ▸ trailing_coeff_positive HPN HPM.ne_zero
-  have CQ0' : coeff Q' 0 > 0 := by
-    have : coeff Q tdQ = coeff Q' 0 := by
-      rw [CQ, ← zero_add tdQ, Polynomial.coeff_X_pow_mul]
-    exact this ▸ trailing_coeff_positive HQN HQM.ne_zero
+  have CP0' : coeff P' 0 > 0 :=
+    have : coeff P tdP = coeff P' 0 :=
+      Eq.symm CP ▸ (zero_add tdP) ▸ Polynomial.coeff_X_pow_mul P' tdP 0
+    this ▸ trailing_coeff_positive HPN HPM.ne_zero
+  have CQ0' : coeff Q' 0 > 0 :=
+    have : coeff Q tdQ = coeff Q' 0 :=
+      Eq.symm CQ ▸ (zero_add tdQ) ▸ Polynomial.coeff_X_pow_mul Q' tdQ 0
+    this ▸ trailing_coeff_positive HQN HQM.ne_zero
   have C1 : (coeff P' 0 = 1) ∧ (coeff Q' 0 = 1) :=
     constant_term_is_one CPM' CQM' CPN' CQN' CPQ01' CP0' CQ0'
   have C2 := HRC P' Q' ⟨CPM', CPN', C1.1⟩ ⟨CQM', CQN', C1.2⟩ CPQ01'
-  rw [CP, CQ]
-  exact ⟨zero_one_mul_pow C2.1, zero_one_mul_pow C2.2⟩
+  exact CP ▸ CQ ▸ ⟨zero_one_mul_pow C2.1, zero_one_mul_pow C2.2⟩
 
 end ZeroOnePolynomials
