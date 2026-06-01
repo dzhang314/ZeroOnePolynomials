@@ -1,5 +1,6 @@
 import Mathlib.Algebra.Polynomial.Div
 import Mathlib.Data.Real.Basic
+set_option pp.fieldNotation false
 
 /-!
 # 0-1 Polynomial Conjecture
@@ -10,7 +11,7 @@ with constant term $`1`.
 -/
 
 open scoped Polynomial
-open Polynomial (coeff Monic natTrailingDegree X)
+open Polynomial (coeff Monic natDegree natTrailingDegree X)
 
 namespace ZeroOnePolynomials
 
@@ -101,5 +102,43 @@ theorem zero_one_mul_pow (H : IsZeroOnePolynomial P) :
   · left; rfl
 
 end
+
+theorem constant_term_upper_bound {P Q : ℝ[X]}
+    (HPM : Monic P)
+    (HPN : HasNonnegativeCoefficients P)
+    (HQN : HasNonnegativeCoefficients Q)
+    (HPQ01 : IsZeroOnePolynomial (P * Q)) :
+    (coeff Q 0 ≤ 1) := by
+  have C1 : coeff (P * Q) (natDegree P) ≤ 1 := by
+    cases HPQ01 (natDegree P) with
+    | inl h => rw [h]; exact zero_le_one
+    | inr h => rw [h]
+  have C2 : coeff Q 0 ≤ coeff (P * Q) (natDegree P) := by
+    rw [Polynomial.coeff_mul]
+    have C3 : (P.natDegree, 0) ∈ Finset.antidiagonal P.natDegree := by simp
+    have C4 : ∀ x ∈ Finset.antidiagonal P.natDegree,
+        0 ≤ (coeff P x.1) * (coeff Q x.2) :=
+      fun x _ => mul_nonneg (HPN x.1) (HQN x.2)
+    simpa [HPM] using Finset.single_le_sum C4 C3
+  exact le_trans C2 C1
+
+theorem constant_term_is_one {P Q : ℝ[X]}
+    (HPM : Monic P)
+    (HQM : Monic Q)
+    (HPN : HasNonnegativeCoefficients P)
+    (HQN : HasNonnegativeCoefficients Q)
+    (HPQ01 : IsZeroOnePolynomial (P * Q))
+    (HP0 : coeff P 0 > 0) (HQ0 : coeff Q 0 > 0) :
+    ((coeff P 0 = 1) ∧ (coeff Q 0 = 1)) := by
+  have : coeff P 0 ≤ 1 :=
+    constant_term_upper_bound HQM HQN HPN (by rwa [mul_comm])
+  have : coeff Q 0 ≤ 1 :=
+    constant_term_upper_bound HPM HPN HQN HPQ01
+  have CPQ : ((coeff P 0) * (coeff Q 0) = 0) ∨
+             ((coeff P 0) * (coeff Q 0) = 1) := by
+    simpa [Polynomial.mul_coeff_zero] using HPQ01 0
+  cases CPQ
+  · linarith [mul_pos HP0 HQ0]
+  · constructor <;> nlinarith
 
 end ZeroOnePolynomials
