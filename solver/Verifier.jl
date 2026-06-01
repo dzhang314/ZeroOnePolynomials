@@ -1,6 +1,7 @@
 #!/usr/bin/env julia
 
 using AbstractAlgebra: QQ, polynomial_ring
+using Base.Threads: @threads
 using Groebner: groebner_with_change_matrix
 using NautyGraphs: NautyGraph, add_edge!, canonize!, edges
 using Printf: @sprintf
@@ -150,22 +151,33 @@ function main()
         d_max += 1
     end
     d_max -= 1
-    canonical_systems = Set{Vector{Vector{Tuple{Int,Int}}}}()
+    canonical_systems = Set{Vector{Vector{Tuple{Int,Int}}}}[]
     for d = 0:d_max
+        current_slice = Set{Vector{Vector{Tuple{Int,Int}}}}()
+        push!(canonical_systems, current_slice)
+        raw_systems = Vector{Vector{Vector{Tuple{Int,Int}}}}()
         for (m, n) in degree_pairs(d)
-            for system in load_systems(data_file_path(m, n))
-                canonical_system = canonize(system)
-                if !(canonical_system in canonical_systems)
-                    if !has_no_solution(canonical_system)
-                        println(canonical_system)
-                        println(system)
-                        println("ERROR: SATISFIABLE SYSTEM FOUND!")
-                    end
-                    push!(canonical_systems, canonical_system)
-                end
+            append!(raw_systems, load_systems(data_file_path(m, n)))
+        end
+        canonized = similar(raw_systems)
+        @threads for i in eachindex(raw_systems)
+            canonized[i] = canonize(raw_systems[i])
+        end
+        for system in canonized
+            if !any(system in slice for slice in canonical_systems)
+                push!(current_slice, system)
             end
         end
-        println("Degree $d: verified $(length(canonical_systems)) systems")
+        println("Degree $d: Found $(length(current_slice)) distinct systems.")
+        flush(stdout)
+        @threads for system in collect(current_slice)
+            if !has_no_solution(system)
+                println("ERROR: SATISFIABLE SYSTEM FOUND!\n", system)
+                flush(stdout)
+            end
+        end
+        println("Degree $d: Verified $(length(current_slice)) systems.")
+        flush(stdout)
     end
     return nothing
 end
