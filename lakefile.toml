@@ -11,5 +11,10 @@ name = "mathlib"
 scope = "leanprover-community"
 rev = "v4.31.0-rc1"
 
+[[require]]
+name = "verso"
+git = "https://github.com/leanprover/verso.git"
+rev = "bump-to-v4.31.0-rc1"
+
 [[lean_lib]]
 name = "ZeroOnePolynomials"
