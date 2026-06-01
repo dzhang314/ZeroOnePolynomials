@@ -8,6 +8,7 @@
     max-width: 100%;
 }
 
+.code-content>.verso-text.mod-doc code,
 .code-content code.math.inline {
     padding: 0;
 }
