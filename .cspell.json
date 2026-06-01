@@ -2,9 +2,11 @@
     "words": [
         "coeff",
         "degrevlex",
+        "docstrings",
         "DZERO",
         "fwhole",
         "groebner",
+        "katex",
         "keepempty",
         "leanprover",
         "linalg",

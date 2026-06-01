@@ -1,0 +1,3 @@
+docstrings_as_text = true
+extra_css = ["assets/style.css"]
+extra_js = ["assets/katex-loader.js"]

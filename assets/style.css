@@ -1,0 +1,13 @@
+@import url("https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.css");
+
+.verso-text p {
+    margin-bottom: 1rem;
+}
+
+.code-content>.verso-text.mod-doc {
+    max-width: 100%;
+}
+
+.code-content code.math.inline {
+    padding: 0;
+}
