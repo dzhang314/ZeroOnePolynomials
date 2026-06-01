@@ -141,4 +141,10 @@ theorem constant_term_is_one {P Q : ℝ[X]}
   · linarith [mul_pos HP0 HQ0]
   · constructor <;> nlinarith
 
+theorem trailing_coeff_positive {P : ℝ[X]}
+    (HPN : HasNonnegativeCoefficients P)
+    (HP : P ≠ 0) :
+    coeff P (natTrailingDegree P) > 0 :=
+  lt_of_le_of_ne (HPN _) (Ne.symm (mt Polynomial.trailingCoeff_eq_zero.mp HP))
+
 end ZeroOnePolynomials

@@ -21,6 +21,7 @@
         "nonneg",
         "simpa",
         "sprintf",
+        "symm",
         "Weverything",
         "Wextra",
         "Zhang"
