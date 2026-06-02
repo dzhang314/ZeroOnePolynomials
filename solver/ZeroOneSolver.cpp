@@ -39,17 +39,17 @@ constexpr var_index_t N = ZERO_ONE_SOLVER_N;
 #endif
 
 
-// clang-format off
-constexpr bool SKIP_ZERO_TERMS = true;
-constexpr bool SKIP_ZERO_EQUATIONS = true;
-
-
 static std::ostream &operator<<(std::ostream &os, const Term &term) {
-    if (term == TERM_ZERO) { os << '0'; }
-    else if (term.p_index) { os << 'p' << static_cast<int>(term.p_index);
-        if (term.q_index) { os << "*q" << static_cast<int>(term.q_index); } }
-    else if (term.q_index) { os << 'q' << static_cast<int>(term.q_index); }
-    else { os << '1'; }
+    if (term == TERM_ZERO) {
+        os << '0';
+    } else if (term.p_index) {
+        os << 'p' << static_cast<int>(term.p_index);
+        if (term.q_index) { os << "*q" << static_cast<int>(term.q_index); }
+    } else if (term.q_index) {
+        os << 'q' << static_cast<int>(term.q_index);
+    } else {
+        os << '1';
+    }
     return os;
 }
 
@@ -59,38 +59,44 @@ static std::ostream &operator<<(std::ostream &os, const System<M, N> &system) {
         bool first = true;
         for (std::size_t t = 0; t < M + 1; ++t) {
             const Term term = system.lhs[e][t];
-            if constexpr (SKIP_ZERO_TERMS) { if (term == TERM_ZERO) { continue; } }
-            if (first) { first = false; } else { os << " + "; }
+            if (term == TERM_ZERO) { continue; }
+            if (first) {
+                first = false;
+            } else {
+                os << " + ";
+            }
             os << term;
         }
         const RHS rhs = system.rhs.get(e);
-        if constexpr (SKIP_ZERO_EQUATIONS) { if (first && (rhs == RHS::ZERO)) { continue; } }
-        else { if (first) { os << '0'; } }
-        switch (rhs) {
+        if (first && (rhs == RHS::ZERO)) {
+            continue;
+        } else if (first) {
+            os << '0';
+        }
+        switch (rhs) { // clang-format off
             case RHS::ZERO_OR_ONE: os << " == 0 or 1\n"; break;
             case RHS::ZERO:        os << " == 0\n";      break;
             case RHS::ONE:         os << " == 1\n";      break;
-        }
+        } // clang-format on
     }
     for (var_index_t i = 1; i <= M - 1; ++i) {
-        switch (system.p.get(i - 1)) {
+        switch (system.p.get(i - 1)) { // clang-format off
             case VAR::UNKNOWN:     os << "0 <= p" << static_cast<int>(i) << " <= 1\n"; break;
             case VAR::ZERO_OR_ONE: os << 'p' << static_cast<int>(i) << " == 0 or 1\n"; break;
             case VAR::ZERO:        os << 'p' << static_cast<int>(i) << " == 0\n";      break;
             case VAR::ONE:         os << 'p' << static_cast<int>(i) << " == 1\n";      break;
-        }
+        } // clang-format on
     }
     for (var_index_t j = 1; j <= N - 1; ++j) {
-        switch (system.q.get(j - 1)) {
+        switch (system.q.get(j - 1)) { // clang-format off
             case VAR::UNKNOWN:     os << "0 <= q" << static_cast<int>(j) << " <= 1\n"; break;
             case VAR::ZERO_OR_ONE: os << 'q' << static_cast<int>(j) << " == 0 or 1\n"; break;
             case VAR::ZERO:        os << 'q' << static_cast<int>(j) << " == 0\n";      break;
             case VAR::ONE:         os << 'q' << static_cast<int>(j) << " == 1\n";      break;
-        }
+        } // clang-format on
     }
     return os;
 }
-// clang-format on
 
 
 static void print_leaf_system(const System<M, N> &system) {
