@@ -22,22 +22,17 @@ def find_gcc_executable() -> str:
     Return the path to the most recent version of the GNU C++ compiler
     installed on the system. If no such compiler is found, return "g++".
     """
-    if os.path.isdir("/opt/homebrew/bin"):
-        candidates = [
-            filename
-            for filename in os.listdir("/opt/homebrew/bin")
-            if filename.startswith("g++")
-        ]
-        if candidates:
-            return os.path.join("/opt/homebrew/bin", sorted(candidates)[-1])
-    if os.path.isdir("/usr/bin"):
-        candidates = [
-            filename
-            for filename in os.listdir("/usr/bin")
-            if filename.startswith("g++")
-        ]
-        if candidates:
-            return os.path.join("/usr/bin", sorted(candidates)[-1])
+    for bin_dir in ["/opt/homebrew/bin", "/usr/bin"]:
+        if os.path.isdir(bin_dir):
+            candidates: list[tuple[int, str]] = []
+            for filename in os.listdir(bin_dir):
+                if filename.startswith("g++-"):
+                    try:
+                        candidates.append((int(filename[4:]), filename))
+                    except ValueError:
+                        pass
+            if candidates:
+                return os.path.join(bin_dir, sorted(candidates)[-1][1])
     return "g++"
 
 
