@@ -19,9 +19,11 @@
         "nauty",
         "nlinarith",
         "nonneg",
+        "nthreads",
         "simpa",
         "sprintf",
         "symm",
+        "threadid",
         "Weverything",
         "Wextra",
         "Zhang"

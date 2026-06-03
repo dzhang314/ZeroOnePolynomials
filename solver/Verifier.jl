@@ -1,25 +1,23 @@
 #!/usr/bin/env julia
 
 using AbstractAlgebra: QQ, polynomial_ring
-using Base.Threads: @threads
+using Base.Threads: @spawn, Atomic, atomic_add!, atomic_sub!, nthreads, threadid
 using Groebner: groebner_with_change_matrix
 using NautyGraphs: NautyGraph, add_edge!, canonize!, edges
-using Printf: @sprintf
+using Printf: @printf, @sprintf
+using SHA: sha256
 
 
-function degree_pairs(d::Int)
-    return [(m, d - m) for m in 5:((d-1)>>1) if (m == 5) || (m >= 7)]
-end
+degree_pairs(d::Int) =
+    [(m, d - m) for m in 5:((d-1)>>1) if (m == 5) || (m >= 7)]
 
+data_file_path(m::Int, n::Int) = joinpath("data",
+    @sprintf("ZeroOneEquations-%04d-%04d-%04d.txt", m + n, m, n))
 
-function data_file_path(m::Int, n::Int)
-    return @sprintf("data/ZeroOneEquations-%04d-%04d-%04d.txt", m + n, m, n)
-end
+data_files_available(d::Int) =
+    all(isfile(data_file_path(m, n)) for (m, n) in degree_pairs(d))
 
-
-function data_files_available(d::Int)
-    return all(isfile(data_file_path(m, n)) for (m, n) in degree_pairs(d))
-end
+proof_file_path(key::AbstractString) = joinpath("proofs", key * ".txt")
 
 
 function load_systems(path::AbstractString)
@@ -55,22 +53,16 @@ end
 
 
 function canonize(system::Vector{Vector{Tuple{Int,Int}}})
+    @assert all(allunique.(system))
     ps = unique(p for equation in system for (p, q) in equation if !iszero(p))
     qs = unique(q for equation in system for (p, q) in equation if !iszero(q))
     terms = unique!(reduce(vcat, system))
-    vertex_labels = vcat(
-        fill(0, length(ps)),
-        fill(1, length(qs)),
-        fill(2, length(terms)),
-        fill(3, length(system)))
-    p_offset = 0
-    q_offset = p_offset + length(ps)
-    term_offset = q_offset + length(qs)
-    equation_offset = term_offset + length(terms)
-    p_map = Dict(p => i + p_offset for (i, p) in enumerate(ps))
-    q_map = Dict(q => i + q_offset for (i, q) in enumerate(qs))
+    p_map = Dict(p => i for (i, p) in enumerate(ps))
+    q_map = Dict(q => i + length(ps) for (i, q) in enumerate(qs))
+    term_offset = length(ps) + length(qs)
     term_map = Dict(t => i + term_offset for (i, t) in enumerate(terms))
-    g = NautyGraph(; vertex_labels)
+    g = NautyGraph(vertex_labels=vcat(
+        fill(0, term_offset), fill(1, length(terms)), fill(2, length(system))))
     for term in terms
         (p, q) = term
         if !iszero(p)
@@ -80,6 +72,7 @@ function canonize(system::Vector{Vector{Tuple{Int,Int}}})
             add_edge!(g, q_map[q], term_map[term])
         end
     end
+    equation_offset = term_offset + length(terms)
     for (i, equation) in enumerate(system)
         for term in equation
             add_edge!(g, term_map[term], i + equation_offset)
@@ -91,57 +84,95 @@ function canonize(system::Vector{Vector{Tuple{Int,Int}}})
     canonical_system = [Tuple{Int,Int}[] for _ in system]
     for e in edges(g)
         @assert e.src < e.dst
-        if e.src <= q_offset
+        if e.src <= term_offset
             @assert !terms_frozen
-            p = e.src - p_offset
             i = e.dst - term_offset
-            canonical_terms[i] = Base.setindex(canonical_terms[i], p, 1)
-        elseif e.src <= term_offset
-            @assert !terms_frozen
-            q = e.src - q_offset
-            i = e.dst - term_offset
-            canonical_terms[i] = Base.setindex(canonical_terms[i], q, 2)
+            canonical_terms[i] = Base.setindex(canonical_terms[i],
+                e.src, iszero(canonical_terms[i][1]) ? 1 : 2)
         else
             if !terms_frozen
                 @assert allunique(canonical_terms)
                 terms_frozen = true
             end
-            i = e.src - term_offset
-            j = e.dst - equation_offset
-            push!(canonical_system[j], canonical_terms[i])
+            push!(canonical_system[e.dst-equation_offset],
+                canonical_terms[e.src-term_offset])
         end
     end
     return canonical_system
 end
 
 
-function has_no_solution(system::Vector{Vector{Tuple{Int,Int}}})
-    p_max = maximum(p for equation in system for (p, q) in equation)
-    q_max = maximum(q for equation in system for (p, q) in equation)
-    names = vcat(Symbol.('p', 1:p_max), Symbol.('q', 1:q_max))
+function find_infeasibility_certificate(system::Vector{Vector{Tuple{Int,Int}}})
+    num_vars = maximum(max(a, b) for equation in system for (a, b) in equation)
+    names = Symbol.('x', 1:num_vars)
     _, vars = polynomial_ring(QQ, names; internal_ordering=:degrevlex)
     polynomials = map(system) do equation
         polynomial = -1
-        for (p, q) in equation
-            if iszero(p)
-                @assert !iszero(q)
-                polynomial += vars[q+p_max]
-            elseif iszero(q)
-                @assert !iszero(p)
-                polynomial += vars[p]
-            else
-                polynomial += vars[p] * vars[q+p_max]
-            end
+        for (a, b) in equation
+            @assert !iszero(a)
+            polynomial += iszero(b) ? vars[a] : vars[a] * vars[b]
         end
         return polynomial
     end
+    start = time_ns()
     for seed = 1:10
         _, matrix = groebner_with_change_matrix(polynomials; seed)
         if matrix * polynomials == [1]
-            return true
+            return (reshape(matrix, :), time_ns() - start)
         end
     end
-    return false
+    return (nothing, time_ns() - start)
+end
+
+
+term_string(i::Int, j::Int) =
+    iszero(j) ? @sprintf("x%d", i) : @sprintf("x%d*x%d", i, j)
+
+equation_string(equation::Vector{Tuple{Int,Int}}) =
+    join((term_string(i, j) for (i, j) in equation), " + ")
+
+system_string(system::Vector{Vector{Tuple{Int,Int}}}) =
+    join((equation_string(equation) for equation in system), '\n')
+
+
+function solve(system::Vector{Vector{Tuple{Int,Int}}}, m::Int, n::Int)
+    system_str = system_string(system)
+    key = bytes2hex(sha256(system_str))
+    proof_path = proof_file_path(key)
+    if isfile(proof_path)
+        open(proof_path) do io
+            if !startswith(io, system_str * "\n\n")
+                println(stderr, "ERROR: Hash collision detected: $key")
+                flush(stderr)
+            end
+        end
+    else
+        mkpath(dirname(proof_path))
+        temp_path = proof_path * ".temp"
+        open(temp_path, "w") do io
+            println(io, system_str)
+        end
+        certificate, ns = find_infeasibility_certificate(system)
+        if isnothing(certificate)
+            println(stderr, "ERROR: Failed to prove: $key")
+            println(stderr, system_string(system))
+            println(stderr)
+            flush(stderr)
+        else
+            println("Thread $(threadid()) proved $key in $(ns / 1.0e6) ms.")
+            open(temp_path, "a") do io
+                println(io)
+                for polynomial in certificate
+                    println(io, replace(string(polynomial), "//" => '/'))
+                end
+                println(io)
+                @printf(io, "# computed in %.6f seconds\n", ns / 1.0e9)
+                @printf(io, "# found at degree %d (%d, %d)\n", m + n, m, n)
+            end
+            mv(temp_path, proof_path)
+        end
+    end
+    return nothing
 end
 
 
@@ -151,38 +182,73 @@ function main()
         d_max += 1
     end
     d_max -= 1
-    canonical_systems = Set{Vector{Vector{Tuple{Int,Int}}}}[]
-    for d = 0:d_max
-        current_slice = Set{Vector{Vector{Tuple{Int,Int}}}}()
-        push!(canonical_systems, current_slice)
-        raw_systems = Vector{Vector{Vector{Tuple{Int,Int}}}}()
-        for (m, n) in degree_pairs(d)
-            append!(raw_systems, load_systems(data_file_path(m, n)))
-        end
-        canonized = similar(raw_systems)
-        @threads for i in eachindex(raw_systems)
-            canonized[i] = canonize(raw_systems[i])
-        end
-        for system in canonized
-            if !any(system in slice for slice in canonical_systems)
-                push!(current_slice, system)
+    println("Found data files up to degree $d_max.")
+    flush(stdout)
+    counters = Dict(d => Atomic{Int}(1) for d in 0:d_max)
+    work = Channel{Tuple{Vector{Vector{Tuple{Int,Int}}},Int,Int}}(
+        4 * nthreads())
+    producer = @spawn begin
+        try
+            canonical_systems = Set{Vector{Vector{Tuple{Int,Int}}}}()
+            for d = 0:d_max
+                for (m, n) in degree_pairs(d)
+                    for raw_system in load_systems(data_file_path(m, n))
+                        system = canonize(raw_system)
+                        if !(system in canonical_systems)
+                            push!(canonical_systems, system)
+                            atomic_add!(counters[d], 1)
+                            put!(work, (system, m, n))
+                        end
+                    end
+                end
+                if isone(atomic_sub!(counters[d], 1))
+                    println("Finished verification for degree $d.")
+                    flush(stdout)
+                end
             end
+        finally
+            close(work)
         end
-        println("Degree $d: Found $(length(current_slice)) distinct systems.")
-        flush(stdout)
-        @threads for system in collect(current_slice)
-            if !has_no_solution(system)
-                println("ERROR: SATISFIABLE SYSTEM FOUND!\n", system)
-                flush(stdout)
-            end
-        end
-        println("Degree $d: Verified $(length(current_slice)) systems.")
-        flush(stdout)
     end
+    consumers = map(1:nthreads()) do _
+        @spawn for (system, m, n) in work
+            try
+                solve(system, m, n)
+            catch err
+                println(stderr, "ERROR: ", err)
+                flush(stderr)
+            finally
+                if isone(atomic_sub!(counters[m+n], 1))
+                    println("Finished verification for degree $(m + n).")
+                    flush(stdout)
+                end
+            end
+        end
+    end
+    foreach(wait, consumers)
+    wait(producer)
     return nothing
 end
 
 
 if abspath(PROGRAM_FILE) == @__FILE__
+    println("Starting up...")
+    flush(stdout)
+    find_infeasibility_certificate([
+        [(2, 6), (5, 7)],
+        [(4, 7), (5, 6)],
+        [(3, 0), (2, 7)],
+        [(2, 0), (4, 6)],
+        [(4, 0), (3, 6)],
+        [(5, 0), (1, 7)],
+        [(3, 0), (1, 0)],
+        [(2, 0), (7, 0)],
+        [(1, 0), (6, 0)],
+        [(7, 0), (6, 0)],
+        [(4, 0), (7, 0), (1, 6)],
+        [(5, 0), (6, 0), (3, 7)],
+    ]) # warm up Groebner basis solver
+    println("Running parallel verification with $(nthreads()) threads.")
+    flush(stdout)
     main()
 end

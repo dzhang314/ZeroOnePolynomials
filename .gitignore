@@ -1,3 +1,4 @@
 /.lake/
 /solver/bin/ZeroOneSolver-*-*
 /solver/data/ZeroOneEquations-*-*-*.txt
+/solver/proofs/*.txt
