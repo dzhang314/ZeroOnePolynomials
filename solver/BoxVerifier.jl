@@ -1,0 +1,308 @@
+using HiGHS: HighsInt, Highs_create, Highs_destroy,
+    Highs_getModelStatus, Highs_getSolution, Highs_passLp,
+    Highs_run, Highs_setBoolOptionValue,
+    kHighsMatrixFormatColwise, kHighsModelStatusOptimal,
+    kHighsObjSenseMinimize, kHighsStatusOk
+
+
+@inline sort_tuple(i::Int, j::Int) = minmax(i, j)
+
+@inline function sort_tuple(i::Int, j::Int, k::Int)
+    i, k = minmax(i, k)
+    i, j = minmax(i, j)
+    j, k = minmax(j, k)
+    return (i, j, k)
+end
+
+
+@inline sorted_monomial_index(::Int) = 0
+
+@inline sorted_monomial_index(::Int, i::Int) = i
+
+@inline sorted_monomial_index(n::Int, i::Int, j::Int) =
+    iszero(i) ? sorted_monomial_index(n, j) :
+    n + div((2 * n - i + 2) * (i - 1), 2) + (j - i + 1)
+
+@inline sorted_monomial_index(n::Int, i::Int, j::Int, k::Int) =
+    iszero(i) ? sorted_monomial_index(n, j, k) :
+    n + div((n + 1) * n, 2) +
+    div((n + 2) * (n + 1) * n -
+        (n - i + 3) * (n - i + 2) * (n - i + 1), 6) +
+    div((2 * n - i - j + 3) * (j - i), 2) + (k - j + 1)
+
+
+@inline monomial_index(n::Int) = sorted_monomial_index(n)
+
+@inline monomial_index(n::Int, i::Int) = sorted_monomial_index(n, i)
+
+@inline function monomial_index(n::Int, i::Int, j::Int)
+    i, j = sort_tuple(i, j)
+    return sorted_monomial_index(n, i, j)
+end
+
+@inline function monomial_index(n::Int, i::Int, j::Int, k::Int)
+    i, j, k = sort_tuple(i, j, k)
+    return sorted_monomial_index(n, i, j, k)
+end
+
+
+function build_terms(terms::Dict{NTuple{N,Int},Int}, i::Int, n::Int) where {N}
+    if i > n
+        result = copy(terms)
+        for ((z, j...), c) in terms
+            @assert iszero(z)
+            key = sort_tuple(i - n, j...)
+            result[key] = get(result, key, 0) - c
+        end
+        return result
+    else
+        result = Dict{NTuple{N,Int},Int}()
+        for ((z, j...), c) in terms
+            @assert iszero(z)
+            key = sort_tuple(i, j...)
+            result[key] = c
+        end
+        return result
+    end
+end
+
+
+function construct_quadratic_box_constraints(n::Int)
+    num_columns = div((2 * n + 1) * (2 * n), 2)
+    num_entries = div((3 * n + 1) * (3 * n), 2)
+    a_start = HighsInt[]
+    a_index = HighsInt[]
+    a_value = Cdouble[]
+    sizehint!(a_start, num_columns + 1)
+    sizehint!(a_index, num_entries)
+    sizehint!(a_value, num_entries)
+    push!(a_start, zero(HighsInt))
+    terms = Dict{Tuple{Int,Int},Int}()
+    terms[(0, 0)] = 1
+    for i = 1:2*n
+        terms_i = build_terms(terms, i, n)
+        for j = i:2*n
+            terms_j = build_terms(terms_i, j, n)
+            for ((x, y), c) in terms_j
+                push!(a_index, sorted_monomial_index(n, x, y))
+                push!(a_value, -c)
+            end
+            push!(a_start, length(a_index))
+        end
+    end
+    @assert length(a_start) == num_columns + 1
+    @assert length(a_index) == num_entries
+    @assert length(a_value) == num_entries
+    return (a_start, a_index, a_value)
+end
+
+function construct_cubic_box_constraints(n::Int)
+    num_columns = div((2 * n + 2) * (2 * n + 1) * (2 * n), 6)
+    num_entries = div((3 * n + 2) * (3 * n + 1) * (3 * n), 6)
+    a_start = HighsInt[]
+    a_index = HighsInt[]
+    a_value = Cdouble[]
+    sizehint!(a_start, num_columns + 1)
+    sizehint!(a_index, num_entries)
+    sizehint!(a_value, num_entries)
+    push!(a_start, zero(HighsInt))
+    terms = Dict{Tuple{Int,Int,Int},Int}()
+    terms[(0, 0, 0)] = 1
+    for i = 1:2*n
+        terms_i = build_terms(terms, i, n)
+        for j = i:2*n
+            terms_j = build_terms(terms_i, j, n)
+            for k = j:2*n
+                terms_k = build_terms(terms_j, k, n)
+                for ((x, y, z), c) in terms_k
+                    push!(a_index, sorted_monomial_index(n, x, y, z))
+                    push!(a_value, -c)
+                end
+                push!(a_start, length(a_index))
+            end
+        end
+    end
+    @assert length(a_start) == num_columns + 1
+    @assert length(a_index) == num_entries
+    @assert length(a_value) == num_entries
+    return (a_start, a_index, a_value)
+end
+
+
+const Equation = Vector{Tuple{Int,Int}}
+const System = Vector{Equation}
+
+
+function add_linear_equation_constraint!(
+    a_start::Vector{HighsInt},
+    a_index::Vector{HighsInt},
+    a_value::Vector{Cdouble},
+    equation::Equation,
+    n::Int,
+    j::Int...,
+)
+    _one = one(Cdouble)
+    for (i, _) in equation
+        push!(a_index, monomial_index(n, i, j...))
+        push!(a_value, +_one)
+    end
+    push!(a_index, monomial_index(n, j...))
+    push!(a_value, -_one)
+    push!(a_start, length(a_index))
+    for (i, _) in equation
+        push!(a_index, monomial_index(n, i, j...))
+        push!(a_value, -_one)
+    end
+    push!(a_index, monomial_index(n, j...))
+    push!(a_value, +_one)
+    push!(a_start, length(a_index))
+    return (a_start, a_index, a_value)
+end
+
+function add_quadratic_equation_constraint!(
+    a_start::Vector{HighsInt},
+    a_index::Vector{HighsInt},
+    a_value::Vector{Cdouble},
+    equation::Equation,
+    n::Int,
+    k::Int...,
+)
+    _one = one(Cdouble)
+    for (i, j) in equation
+        push!(a_index, monomial_index(n, i, j, k...))
+        push!(a_value, +_one)
+    end
+    push!(a_index, monomial_index(n, k...))
+    push!(a_value, -_one)
+    push!(a_start, length(a_index))
+    for (i, j) in equation
+        push!(a_index, monomial_index(n, i, j, k...))
+        push!(a_value, -_one)
+    end
+    push!(a_index, monomial_index(n, k...))
+    push!(a_value, +_one)
+    push!(a_start, length(a_index))
+    return (a_start, a_index, a_value)
+end
+
+
+const QUADRATIC_BOX_CONSTRAINT_CACHE =
+    Dict{Int,Tuple{Vector{HighsInt},Vector{HighsInt},Vector{Cdouble}}}()
+
+const CUBIC_BOX_CONSTRAINT_CACHE =
+    Dict{Int,Tuple{Vector{HighsInt},Vector{HighsInt},Vector{Cdouble}}}()
+
+function construct_quadratic_constraint_matrix(system::System)
+    n = maximum(max(i, j) for equation in system for (i, j) in equation)
+    if !haskey(QUADRATIC_BOX_CONSTRAINT_CACHE, n)
+        QUADRATIC_BOX_CONSTRAINT_CACHE[n] =
+            construct_quadratic_box_constraints(n)
+    end
+    a_start, a_index, a_value = copy.(QUADRATIC_BOX_CONSTRAINT_CACHE[n])
+    for equation in system
+        if all(iszero(j) for (i, j) in equation)
+            add_linear_equation_constraint!(
+                a_start, a_index, a_value, equation, n)
+            for j = 1:n
+                add_linear_equation_constraint!(
+                    a_start, a_index, a_value, equation, n, j)
+            end
+        else
+            add_quadratic_equation_constraint!(
+                a_start, a_index, a_value, equation, n)
+        end
+    end
+    return (a_start, a_index, a_value)
+end
+
+function construct_cubic_constraint_matrix(system::System)
+    n = maximum(max(i, j) for equation in system for (i, j) in equation)
+    if !haskey(CUBIC_BOX_CONSTRAINT_CACHE, n)
+        CUBIC_BOX_CONSTRAINT_CACHE[n] = construct_cubic_box_constraints(n)
+    end
+    a_start, a_index, a_value = copy.(CUBIC_BOX_CONSTRAINT_CACHE[n])
+    for equation in system
+        if all(iszero(j) for (i, j) in equation)
+            add_linear_equation_constraint!(
+                a_start, a_index, a_value, equation, n)
+            for j = 1:n
+                add_linear_equation_constraint!(
+                    a_start, a_index, a_value, equation, n, j)
+            end
+            for j = 1:n
+                for k = j:n
+                    add_linear_equation_constraint!(
+                        a_start, a_index, a_value, equation, n, j, k)
+                end
+            end
+        else
+            add_quadratic_equation_constraint!(
+                a_start, a_index, a_value, equation, n)
+            for k = 1:n
+                add_quadratic_equation_constraint!(
+                    a_start, a_index, a_value, equation, n, k)
+            end
+        end
+    end
+    return (a_start, a_index, a_value)
+end
+
+
+function solve_linear_program(system::System, problem::Symbol)
+    n = maximum(max(i, j) for equation in system for (i, j) in equation)
+    num_rows = nothing
+    constraint_matrix = nothing
+    if problem == :quadratic
+        num_rows = div((n + 2) * (n + 1), 2)
+        constraint_matrix = construct_quadratic_constraint_matrix(system)
+    elseif problem == :cubic
+        num_rows = div((n + 3) * (n + 2) * (n + 1), 6)
+        constraint_matrix = construct_cubic_constraint_matrix(system)
+    else
+        @assert false
+    end
+    a_start, a_index, a_value = constraint_matrix
+    num_columns = length(a_start) - 1
+    num_entries = length(a_index)
+    @assert iszero(a_start[begin])
+    @assert a_start[end] == num_entries
+    @assert issorted(a_start) && allunique(a_start)
+    for row_index in a_index
+        @assert 0 <= row_index < num_rows
+    end
+    @assert length(a_value) == num_entries
+    column_cost = ones(Cdouble, num_columns)
+    column_lower_bound = zeros(Cdouble, num_columns)
+    column_upper_bound = fill(Cdouble(+Inf), num_columns)
+    rhs = zeros(Cdouble, num_rows)
+    rhs[begin] = one(Cdouble)
+    instance = Highs_create()
+    try
+        status = Highs_setBoolOptionValue(
+            instance, "output_flag", zero(HighsInt))
+        @assert status == kHighsStatusOk
+        status = Highs_passLp(instance,
+            num_columns, num_rows, num_entries, kHighsMatrixFormatColwise,
+            kHighsObjSenseMinimize, zero(Cdouble), column_cost,
+            column_lower_bound, column_upper_bound, rhs, rhs,
+            a_start, a_index, a_value)
+        @assert status == kHighsStatusOk
+        status = Highs_run(instance)
+        @assert status == kHighsStatusOk
+        status = Highs_getModelStatus(instance)
+        result = nothing
+        if status == kHighsModelStatusOptimal
+            column_primal = Vector{Cdouble}(undef, num_columns)
+            column_dual = Vector{Cdouble}(undef, num_columns)
+            row_primal = Vector{Cdouble}(undef, num_rows)
+            row_dual = Vector{Cdouble}(undef, num_rows)
+            status = Highs_getSolution(instance,
+                column_primal, column_dual, row_primal, row_dual)
+            @assert status == kHighsStatusOk
+            result = column_primal
+        end
+        return result
+    finally
+        Highs_destroy(instance)
+    end
+end
