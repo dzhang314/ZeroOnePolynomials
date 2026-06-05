@@ -1,12 +1,17 @@
+module PositivstellensatzCertificates
+
 using FLINT_jll: libflint
+
 using HiGHS: HighsInt, Highs_create, Highs_destroy,
     Highs_getModelStatus, Highs_getSolution, Highs_passLp,
     Highs_run, Highs_setBoolOptionValue, Highs_setDoubleOptionValue,
     kHighsMatrixFormatColwise, kHighsModelStatusOptimal,
     kHighsObjSenseMinimize, kHighsStatusOk, kHighsStatusWarning
+
 using SparseArrays: SparseMatrixCSC, SparseVector
 
-################################################################################
+############################################################## MONOMIAL INDEXING
+
 
 @inline sort_tuple(i::Int, j::Int) = minmax(i, j)
 
@@ -17,7 +22,6 @@ using SparseArrays: SparseMatrixCSC, SparseVector
     return (i, j, k)
 end
 
-################################################################################
 
 @inline sorted_monomial_index(::Int) = 0
 
@@ -34,7 +38,6 @@ end
         (n - i + 3) * (n - i + 2) * (n - i + 1), 6) +
     div((2 * n - i - j + 3) * (j - i), 2) + (k - j + 1)
 
-################################################################################
 
 @inline monomial_index(n::Int) = sorted_monomial_index(n)
 
@@ -50,7 +53,9 @@ end
     return sorted_monomial_index(n, i, j, k)
 end
 
-################################################################################
+
+################################################################ BOX CONSTRAINTS
+
 
 function build_terms(terms::Dict{NTuple{N,Int},Int}, i::Int, n::Int) where {N}
     if i > n
@@ -71,6 +76,7 @@ function build_terms(terms::Dict{NTuple{N,Int},Int}, i::Int, n::Int) where {N}
         return result
     end
 end
+
 
 function construct_quadratic_box_constraints(n::Int)
     num_columns = div((2 * n + 1) * (2 * n), 2)
@@ -100,6 +106,7 @@ function construct_quadratic_box_constraints(n::Int)
     @assert length(a_value) == num_entries
     return (a_start, a_index, a_value)
 end
+
 
 function construct_cubic_box_constraints(n::Int)
     num_columns = div((2 * n + 2) * (2 * n + 1) * (2 * n), 6)
@@ -133,10 +140,13 @@ function construct_cubic_box_constraints(n::Int)
     return (a_start, a_index, a_value)
 end
 
-################################################################################
+
+########################################################### EQUATION CONSTRAINTS
+
 
 const Equation = Vector{Tuple{Int,Int}}
 const System = Vector{Equation}
+
 
 function add_linear_equation_constraint!(
     a_start::Vector{HighsInt},
@@ -164,6 +174,7 @@ function add_linear_equation_constraint!(
     return (a_start, a_index, a_value)
 end
 
+
 function add_quadratic_equation_constraint!(
     a_start::Vector{HighsInt},
     a_index::Vector{HighsInt},
@@ -190,17 +201,17 @@ function add_quadratic_equation_constraint!(
     return (a_start, a_index, a_value)
 end
 
-################################################################################
 
 const QUADRATIC_LOCK = ReentrantLock()
+
+const CUBIC_LOCK = ReentrantLock()
 
 const QUADRATIC_CACHE =
     Dict{Int,Tuple{Vector{HighsInt},Vector{HighsInt},Vector{Cdouble}}}()
 
-const CUBIC_LOCK = ReentrantLock()
-
 const CUBIC_CACHE =
     Dict{Int,Tuple{Vector{HighsInt},Vector{HighsInt},Vector{Cdouble}}}()
+
 
 function construct_quadratic_constraint_matrix(system::System)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
@@ -225,6 +236,7 @@ function construct_quadratic_constraint_matrix(system::System)
     end
     return (a_start, a_index, a_value)
 end
+
 
 function construct_cubic_constraint_matrix(system::System)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
@@ -260,7 +272,12 @@ function construct_cubic_constraint_matrix(system::System)
     return (a_start, a_index, a_value)
 end
 
-################################################################################
+
+############################################################## LP DATA STRUCTURE
+
+
+export LinearProgram, construct_linear_program
+
 
 struct LinearProgram
     a_start::Vector{HighsInt}
@@ -268,6 +285,7 @@ struct LinearProgram
     a_value::Vector{Cdouble}
     b::Vector{Cdouble}
 end
+
 
 function construct_linear_program(system::System, problem::Symbol)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
@@ -294,6 +312,13 @@ function construct_linear_program(system::System, problem::Symbol)
     b[begin] = one(Cdouble)
     return LinearProgram(a_start, a_index, a_value, b)
 end
+
+
+############################################################# NUMERICAL SOLUTION
+
+
+export solve_linear_program
+
 
 function solve_linear_program(lp::LinearProgram)
     num_columns = length(lp.a_start) - 1
@@ -330,7 +355,9 @@ function solve_linear_program(lp::LinearProgram)
     end
 end
 
-################################################################################
+
+################################################################# FLINT MATRICES
+
 
 mutable struct FlintIntegerMatrix
     entries::Ptr{Int}
@@ -350,18 +377,19 @@ mutable struct FlintIntegerMatrix
     end
 end
 
+
 @inline function Base.setindex!(A::FlintIntegerMatrix, v::Int, i::Int, j::Int)
     ptr = A.entries + ((i - 1) * A.stride + (j - 1)) * sizeof(Int)
     ccall((:fmpz_set_si, libflint), Cvoid, (Ptr{Int}, Int), ptr, v)
     return A
 end
 
-################################################################################
 
 struct FlintRational
     num::Int
     den::Int
 end
+
 
 mutable struct FlintRationalMatrix
     entries::Ptr{FlintRational}
@@ -381,6 +409,7 @@ mutable struct FlintRationalMatrix
     end
 end
 
+
 function Base.getindex(A::FlintRationalMatrix, i::Int, j::Int)
     ptr = A.entries + ((i - 1) * A.stride + (j - 1)) * sizeof(FlintRational)
     num = BigInt()
@@ -391,7 +420,12 @@ function Base.getindex(A::FlintRationalMatrix, i::Int, j::Int)
     return Rational{BigInt}(num, den)
 end
 
-################################################################################
+
+################################################################# EXACT SOLUTION
+
+
+export solve_exact
+
 
 function construct_reduced_matrix(lp::LinearProgram, indices::Vector{Int})
     num_rows = length(lp.b)
@@ -405,6 +439,7 @@ function construct_reduced_matrix(lp::LinearProgram, indices::Vector{Int})
     end
     return A
 end
+
 
 function solve_exact(lp::LinearProgram)
     numerical_solution = solve_linear_program(lp)
@@ -443,3 +478,8 @@ function solve_exact(lp::LinearProgram)
     b = a * x
     return ((b.nzind == [1]) && (b.nzval == [1])) ? (indices, values) : nothing
 end
+
+
+################################################################################
+
+end # module PositivstellensatzCertificates
