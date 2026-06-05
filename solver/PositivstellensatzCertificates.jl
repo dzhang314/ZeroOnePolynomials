@@ -10,6 +10,8 @@ using HiGHS: HighsInt, Highs_create, Highs_destroy,
 
 using SparseArrays: SparseMatrixCSC, SparseVector
 
+@assert HighsInt == Cint
+
 ############################################################## MONOMIAL INDEXING
 
 
@@ -85,13 +87,13 @@ end
 function construct_quadratic_box_generators(n::Int)
     num_columns = div((2 * n + 1) * (2 * n), 2)
     num_entries = div((3 * n + 1) * (3 * n), 2)
-    a_start = HighsInt[]
-    a_index = HighsInt[]
+    a_start = Cint[]
+    a_index = Cint[]
     a_value = Cdouble[]
     sizehint!(a_start, num_columns + 1)
     sizehint!(a_index, num_entries)
     sizehint!(a_value, num_entries)
-    push!(a_start, zero(HighsInt))
+    push!(a_start, zero(Cint))
     box_product = Dict{Tuple{Int,Int},Int}()
     box_product[(0, 0)] = 1
     for i = 1:2*n
@@ -115,13 +117,13 @@ end
 function construct_cubic_box_generators(n::Int)
     num_columns = div((2 * n + 2) * (2 * n + 1) * (2 * n), 6)
     num_entries = div((3 * n + 2) * (3 * n + 1) * (3 * n), 6)
-    a_start = HighsInt[]
-    a_index = HighsInt[]
+    a_start = Cint[]
+    a_index = Cint[]
     a_value = Cdouble[]
     sizehint!(a_start, num_columns + 1)
     sizehint!(a_index, num_entries)
     sizehint!(a_value, num_entries)
-    push!(a_start, zero(HighsInt))
+    push!(a_start, zero(Cint))
     box_product = Dict{Tuple{Int,Int,Int},Int}()
     box_product[(0, 0, 0)] = 1
     for i = 1:2*n
@@ -153,8 +155,8 @@ const System = Vector{Equation}
 
 
 function add_ideal_generators_linear!(
-    a_start::Vector{HighsInt},
-    a_index::Vector{HighsInt},
+    a_start::Vector{Cint},
+    a_index::Vector{Cint},
     a_value::Vector{Cdouble},
     equation::Equation,
     n::Int,
@@ -180,8 +182,8 @@ end
 
 
 function add_ideal_generators_quadratic!(
-    a_start::Vector{HighsInt},
-    a_index::Vector{HighsInt},
+    a_start::Vector{Cint},
+    a_index::Vector{Cint},
     a_value::Vector{Cdouble},
     equation::Equation,
     n::Int,
@@ -211,10 +213,10 @@ const QUADRATIC_LOCK = ReentrantLock()
 const CUBIC_LOCK = ReentrantLock()
 
 const QUADRATIC_CACHE =
-    Dict{Int,Tuple{Vector{HighsInt},Vector{HighsInt},Vector{Cdouble}}}()
+    Dict{Int,Tuple{Vector{Cint},Vector{Cint},Vector{Cdouble}}}()
 
 const CUBIC_CACHE =
-    Dict{Int,Tuple{Vector{HighsInt},Vector{HighsInt},Vector{Cdouble}}}()
+    Dict{Int,Tuple{Vector{Cint},Vector{Cint},Vector{Cdouble}}}()
 
 
 function construct_quadratic_constraint_matrix(system::System)
@@ -284,8 +286,8 @@ export LinearProgram, construct_linear_program
 
 
 struct LinearProgram
-    a_start::Vector{HighsInt}
-    a_index::Vector{HighsInt}
+    a_start::Vector{Cint}
+    a_index::Vector{Cint}
     a_value::Vector{Cdouble}
     b::Vector{Cdouble}
 end
@@ -328,13 +330,16 @@ function solve_linear_program(lp::LinearProgram)
     num_columns = length(lp.a_start) - 1
     num_entries = length(lp.a_index)
     num_rows = length(lp.b)
-    column_cost = ones(Cdouble, num_columns)
+    column_cost = Vector{Cdouble}(undef, num_columns)
+    @simd ivdep for j = 1:num_columns
+        @inbounds column_cost[j] = lp.a_start[j+1] - lp.a_start[j]
+    end
     column_lower_bound = zeros(Cdouble, num_columns)
     column_upper_bound = fill(Cdouble(+Inf), num_columns)
     instance = Highs_create()
     try
         status = Highs_setBoolOptionValue(
-            instance, "output_flag", zero(HighsInt))
+            instance, "output_flag", zero(Cint))
         @assert status == kHighsStatusOk
         status = Highs_setDoubleOptionValue(
             instance, "kkt_tolerance", Cdouble(1.0e-10))
