@@ -1,9 +1,11 @@
+using FLINT_jll: libflint
 using HiGHS: HighsInt, Highs_create, Highs_destroy,
     Highs_getModelStatus, Highs_getSolution, Highs_passLp,
     Highs_run, Highs_setBoolOptionValue,
     kHighsMatrixFormatColwise, kHighsModelStatusOptimal,
     kHighsObjSenseMinimize, kHighsStatusOk
 
+################################################################################
 
 @inline sort_tuple(i::Int, j::Int) = minmax(i, j)
 
@@ -14,6 +16,7 @@ using HiGHS: HighsInt, Highs_create, Highs_destroy,
     return (i, j, k)
 end
 
+################################################################################
 
 @inline sorted_monomial_index(::Int) = 0
 
@@ -30,6 +33,7 @@ end
         (n - i + 3) * (n - i + 2) * (n - i + 1), 6) +
     div((2 * n - i - j + 3) * (j - i), 2) + (k - j + 1)
 
+################################################################################
 
 @inline monomial_index(n::Int) = sorted_monomial_index(n)
 
@@ -45,6 +49,7 @@ end
     return sorted_monomial_index(n, i, j, k)
 end
 
+################################################################################
 
 function build_terms(terms::Dict{NTuple{N,Int},Int}, i::Int, n::Int) where {N}
     if i > n
@@ -65,7 +70,6 @@ function build_terms(terms::Dict{NTuple{N,Int},Int}, i::Int, n::Int) where {N}
         return result
     end
 end
-
 
 function construct_quadratic_box_constraints(n::Int)
     num_columns = div((2 * n + 1) * (2 * n), 2)
@@ -128,10 +132,10 @@ function construct_cubic_box_constraints(n::Int)
     return (a_start, a_index, a_value)
 end
 
+################################################################################
 
 const Equation = Vector{Tuple{Int,Int}}
 const System = Vector{Equation}
-
 
 function add_linear_equation_constraint!(
     a_start::Vector{HighsInt},
@@ -185,6 +189,7 @@ function add_quadratic_equation_constraint!(
     return (a_start, a_index, a_value)
 end
 
+################################################################################
 
 const QUADRATIC_BOX_CONSTRAINT_CACHE =
     Dict{Int,Tuple{Vector{HighsInt},Vector{HighsInt},Vector{Cdouble}}}()
@@ -247,6 +252,7 @@ function construct_cubic_constraint_matrix(system::System)
     return (a_start, a_index, a_value)
 end
 
+################################################################################
 
 function solve_linear_program(system::System, problem::Symbol)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
@@ -305,4 +311,65 @@ function solve_linear_program(system::System, problem::Symbol)
     finally
         Highs_destroy(instance)
     end
+end
+
+################################################################################
+
+mutable struct FlintIntegerMatrix
+    entries::Ptr{Int}
+    r::Int
+    c::Int
+    stride::Int
+    function FlintIntegerMatrix(num_rows::Int, num_columns::Int)
+        A = new()
+        ccall((:fmpz_mat_init, libflint),
+            Cvoid, (Ref{FlintIntegerMatrix}, Int, Int),
+            A, num_rows, num_columns)
+        finalizer(A) do B
+            ccall((:fmpz_mat_clear, libflint),
+                Cvoid, (Ref{FlintIntegerMatrix},), B)
+        end
+        return A
+    end
+end
+
+@inline function Base.setindex!(A::FlintIntegerMatrix, v::Int, i::Int, j::Int)
+    ptr = A.entries + ((i - 1) * A.stride + (j - 1)) * sizeof(Int)
+    ccall((:fmpz_set_si, libflint), Cvoid, (Ptr{Int}, Int), ptr, v)
+    return A
+end
+
+################################################################################
+
+struct FlintRational
+    num::Int
+    den::Int
+end
+
+mutable struct FlintRationalMatrix
+    entries::Ptr{FlintRational}
+    r::Int
+    c::Int
+    stride::Int
+    function FlintRationalMatrix(num_rows::Int, num_columns::Int)
+        A = new()
+        ccall((:fmpq_mat_init, libflint),
+            Cvoid, (Ref{FlintRationalMatrix}, Int, Int),
+            A, num_rows, num_columns)
+        finalizer(A) do B
+            ccall((:fmpq_mat_clear, libflint),
+                Cvoid, (Ref{FlintRationalMatrix},), B)
+        end
+        return A
+    end
+end
+
+function Base.getindex(A::FlintRationalMatrix, i::Int, j::Int)
+    ptr = A.entries + ((i - 1) * A.stride + (j - 1)) * sizeof(FlintRational)
+    num = BigInt()
+    ccall((:fmpz_get_mpz, libflint), Cvoid, (Ref{BigInt}, Ptr{Int}), num, ptr)
+    ptr += sizeof(Int)
+    den = BigInt()
+    ccall((:fmpz_get_mpz, libflint), Cvoid, (Ref{BigInt}, Ptr{Int}), den, ptr)
+    return Rational{BigInt}(num, den)
 end
