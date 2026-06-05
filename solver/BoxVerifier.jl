@@ -1,7 +1,7 @@
 using FLINT_jll: libflint
 using HiGHS: HighsInt, Highs_create, Highs_destroy,
     Highs_getModelStatus, Highs_getSolution, Highs_passLp,
-    Highs_run, Highs_setBoolOptionValue,
+    Highs_run, Highs_setBoolOptionValue, Highs_setDoubleOptionValue,
     kHighsMatrixFormatColwise, kHighsModelStatusOptimal,
     kHighsObjSenseMinimize, kHighsStatusOk
 
@@ -254,7 +254,14 @@ end
 
 ################################################################################
 
-function solve_linear_program(system::System, problem::Symbol)
+struct LinearProgram
+    a_start::Vector{HighsInt}
+    a_index::Vector{HighsInt}
+    a_value::Vector{Cdouble}
+    b::Vector{Cdouble}
+end
+
+function construct_linear_program(system::System, problem::Symbol)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
     num_rows = nothing
     constraint_matrix = nothing
@@ -268,30 +275,38 @@ function solve_linear_program(system::System, problem::Symbol)
         @assert false
     end
     a_start, a_index, a_value = constraint_matrix
-    num_columns = length(a_start) - 1
-    num_entries = length(a_index)
     @assert iszero(a_start[begin])
-    @assert a_start[end] == num_entries
+    @assert a_start[end] == length(a_index)
     @assert issorted(a_start) && allunique(a_start)
+    @assert length(a_index) == length(a_value)
     for row_index in a_index
         @assert 0 <= row_index < num_rows
     end
-    @assert length(a_value) == num_entries
+    b = zeros(Cdouble, num_rows)
+    b[begin] = one(Cdouble)
+    return LinearProgram(a_start, a_index, a_value, b)
+end
+
+function solve_linear_program(lp::LinearProgram)
+    num_columns = length(lp.a_start) - 1
+    num_entries = length(lp.a_index)
+    num_rows = length(lp.b)
     column_cost = ones(Cdouble, num_columns)
     column_lower_bound = zeros(Cdouble, num_columns)
     column_upper_bound = fill(Cdouble(+Inf), num_columns)
-    rhs = zeros(Cdouble, num_rows)
-    rhs[begin] = one(Cdouble)
     instance = Highs_create()
     try
         status = Highs_setBoolOptionValue(
             instance, "output_flag", zero(HighsInt))
         @assert status == kHighsStatusOk
+        status = Highs_setDoubleOptionValue(
+            instance, "kkt_tolerance", Cdouble(1.0e-10))
+        @assert status == kHighsStatusOk
         status = Highs_passLp(instance,
             num_columns, num_rows, num_entries, kHighsMatrixFormatColwise,
             kHighsObjSenseMinimize, zero(Cdouble), column_cost,
-            column_lower_bound, column_upper_bound, rhs, rhs,
-            a_start, a_index, a_value)
+            column_lower_bound, column_upper_bound, lp.b, lp.b,
+            lp.a_start, lp.a_index, lp.a_value)
         @assert status == kHighsStatusOk
         status = Highs_run(instance)
         @assert status == kHighsStatusOk
