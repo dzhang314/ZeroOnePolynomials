@@ -191,19 +191,24 @@ end
 
 ################################################################################
 
-const QUADRATIC_BOX_CONSTRAINT_CACHE =
+const QUADRATIC_LOCK = ReentrantLock()
+
+const QUADRATIC_CACHE =
     Dict{Int,Tuple{Vector{HighsInt},Vector{HighsInt},Vector{Cdouble}}}()
 
-const CUBIC_BOX_CONSTRAINT_CACHE =
+const CUBIC_LOCK = ReentrantLock()
+
+const CUBIC_CACHE =
     Dict{Int,Tuple{Vector{HighsInt},Vector{HighsInt},Vector{Cdouble}}}()
 
 function construct_quadratic_constraint_matrix(system::System)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
-    if !haskey(QUADRATIC_BOX_CONSTRAINT_CACHE, n)
-        QUADRATIC_BOX_CONSTRAINT_CACHE[n] =
-            construct_quadratic_box_constraints(n)
+    a_start, a_index, a_value = lock(QUADRATIC_LOCK) do
+        if !haskey(QUADRATIC_CACHE, n)
+            QUADRATIC_CACHE[n] = construct_quadratic_box_constraints(n)
+        end
+        return copy.(QUADRATIC_CACHE[n])
     end
-    a_start, a_index, a_value = copy.(QUADRATIC_BOX_CONSTRAINT_CACHE[n])
     for equation in system
         if all(iszero(j) for (i, j) in equation)
             add_linear_equation_constraint!(
@@ -222,10 +227,12 @@ end
 
 function construct_cubic_constraint_matrix(system::System)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
-    if !haskey(CUBIC_BOX_CONSTRAINT_CACHE, n)
-        CUBIC_BOX_CONSTRAINT_CACHE[n] = construct_cubic_box_constraints(n)
+    a_start, a_index, a_value = lock(CUBIC_LOCK) do
+        if !haskey(CUBIC_CACHE, n)
+            CUBIC_CACHE[n] = construct_cubic_box_constraints(n)
+        end
+        return copy.(CUBIC_CACHE[n])
     end
-    a_start, a_index, a_value = copy.(CUBIC_BOX_CONSTRAINT_CACHE[n])
     for equation in system
         if all(iszero(j) for (i, j) in equation)
             add_linear_equation_constraint!(
