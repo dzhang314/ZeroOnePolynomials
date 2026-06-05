@@ -90,12 +90,15 @@ function canonize(system::Vector{Vector{Tuple{Int,Int}}})
     ps = unique(p for equation in system for (p, q) in equation if !iszero(p))
     qs = unique(q for equation in system for (p, q) in equation if !iszero(q))
     terms = unique!(reduce(vcat, system))
-    p_map = Dict(p => i for (i, p) in enumerate(ps))
-    q_map = Dict(q => i + length(ps) for (i, q) in enumerate(qs))
-    term_offset = length(ps) + length(qs)
+    num_terms = length(terms)
+    p_offset = 0
+    p_map = Dict(p => i + p_offset for (i, p) in enumerate(ps))
+    q_offset = p_offset + length(ps)
+    q_map = Dict(q => i + q_offset for (i, q) in enumerate(qs))
+    term_offset = q_offset + length(qs)
     term_map = Dict(t => i + term_offset for (i, t) in enumerate(terms))
     g = NautyGraph(vertex_labels=vcat(
-        fill(0, term_offset), fill(1, length(terms)), fill(2, length(system))))
+        fill(0, term_offset), fill(1, num_terms), fill(2, length(system))))
     for term in terms
         (p, q) = term
         if !iszero(p)
@@ -105,14 +108,14 @@ function canonize(system::Vector{Vector{Tuple{Int,Int}}})
             add_edge!(g, q_map[q], term_map[term])
         end
     end
-    equation_offset = term_offset + length(terms)
+    equation_offset = term_offset + num_terms
     for (i, equation) in enumerate(system)
         for term in equation
             add_edge!(g, term_map[term], i + equation_offset)
         end
     end
     canonize!(g)
-    canonical_terms = fill((0, 0), length(terms))
+    canonical_terms = fill((0, 0), num_terms)
     terms_frozen = false
     canonical_system = [Tuple{Int,Int}[] for _ in system]
     for e in edges(g)
