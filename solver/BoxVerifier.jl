@@ -3,7 +3,7 @@ using HiGHS: HighsInt, Highs_create, Highs_destroy,
     Highs_getModelStatus, Highs_getSolution, Highs_passLp,
     Highs_run, Highs_setBoolOptionValue, Highs_setDoubleOptionValue,
     kHighsMatrixFormatColwise, kHighsModelStatusOptimal,
-    kHighsObjSenseMinimize, kHighsStatusOk
+    kHighsObjSenseMinimize, kHighsStatusOk, kHighsStatusWarning
 using SparseArrays: SparseMatrixCSC, SparseVector
 
 ################################################################################
@@ -317,7 +317,7 @@ function solve_linear_program(lp::LinearProgram)
             lp.a_start, lp.a_index, lp.a_value)
         @assert status == kHighsStatusOk
         status = Highs_run(instance)
-        @assert status == kHighsStatusOk
+        @assert (status == kHighsStatusOk) | (status == kHighsStatusWarning)
         if Highs_getModelStatus(instance) != kHighsModelStatusOptimal
             return nothing
         end
@@ -406,28 +406,40 @@ function construct_reduced_matrix(lp::LinearProgram, indices::Vector{Int})
     return A
 end
 
-function solve_certified(lp::LinearProgram)
+function solve_exact(lp::LinearProgram)
     numerical_solution = solve_linear_program(lp)
     if isnothing(numerical_solution)
-        return false
+        return nothing
     end
-    support_indices = findall(>(1.0e-10), numerical_solution)
-    A = construct_reduced_matrix(lp, support_indices)
+    indices = findall(>(1.0e-10), numerical_solution)
+    values = Vector{Rational{BigInt}}(undef, length(indices))
+    A = construct_reduced_matrix(lp, indices)
     B = FlintIntegerMatrix(length(lp.b), 1)
-    for i in eachindex(lp.b)
-        if !iszero(lp.b[i])
-            B[i, 1] = Int(lp.b[i])
+    X = FlintRationalMatrix(length(indices), 1)
+    try
+        for (i, v) in enumerate(lp.b)
+            if !iszero(v)
+                B[i, 1] = Int(v)
+            end
         end
+        status = ccall((:fmpq_mat_can_solve_fmpz_mat_multi_mod, libflint),
+            Cint, (Ref{FlintRationalMatrix},
+                Ref{FlintIntegerMatrix}, Ref{FlintIntegerMatrix}),
+            X, A, B)
+        if iszero(status)
+            return nothing
+        end
+        for i = 1:length(indices)
+            values[i] = X[i, 1]
+        end
+    finally
+        finalize(A)
+        finalize(B)
+        finalize(X)
     end
-    X = FlintRationalMatrix(length(support_indices), 1)
-    ccall((:fmpq_mat_can_solve_fmpz_mat_multi_mod, libflint),
-        Cint, (Ref{FlintRationalMatrix},
-            Ref{FlintIntegerMatrix}, Ref{FlintIntegerMatrix}),
-        X, A, B)
     a = SparseMatrixCSC(length(lp.b), length(lp.a_start) - 1,
         Int.(lp.a_start) .+ 1, Int.(lp.a_index) .+ 1, Int.(lp.a_value))
-    x = SparseVector(length(lp.a_start) - 1,
-        support_indices, [X[i, 1] for i = 1:length(support_indices)])
+    x = SparseVector(length(lp.a_start) - 1, indices, values)
     b = a * x
-    return (b.nzind == [1]) && (b.nzval == [1])
+    return ((b.nzind == [1]) && (b.nzval == [1])) ? (indices, values) : nothing
 end
