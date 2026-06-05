@@ -25,6 +25,8 @@
         "nlinarith",
         "nonneg",
         "nthreads",
+        "nzind",
+        "nzval",
         "simpa",
         "sprintf",
         "symm",

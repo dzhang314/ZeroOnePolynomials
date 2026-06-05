@@ -4,6 +4,7 @@ using HiGHS: HighsInt, Highs_create, Highs_destroy,
     Highs_run, Highs_setBoolOptionValue, Highs_setDoubleOptionValue,
     kHighsMatrixFormatColwise, kHighsModelStatusOptimal,
     kHighsObjSenseMinimize, kHighsStatusOk
+using SparseArrays: SparseMatrixCSC, SparseVector
 
 ################################################################################
 
@@ -317,19 +318,13 @@ function solve_linear_program(lp::LinearProgram)
         @assert status == kHighsStatusOk
         status = Highs_run(instance)
         @assert status == kHighsStatusOk
-        status = Highs_getModelStatus(instance)
-        result = nothing
-        if status == kHighsModelStatusOptimal
-            column_primal = Vector{Cdouble}(undef, num_columns)
-            column_dual = Vector{Cdouble}(undef, num_columns)
-            row_primal = Vector{Cdouble}(undef, num_rows)
-            row_dual = Vector{Cdouble}(undef, num_rows)
-            status = Highs_getSolution(instance,
-                column_primal, column_dual, row_primal, row_dual)
-            @assert status == kHighsStatusOk
-            result = column_primal
+        if Highs_getModelStatus(instance) != kHighsModelStatusOptimal
+            return nothing
         end
-        return result
+        solution = Vector{Cdouble}(undef, num_columns)
+        status = Highs_getSolution(instance, solution, C_NULL, C_NULL, C_NULL)
+        @assert status == kHighsStatusOk
+        return solution
     finally
         Highs_destroy(instance)
     end
@@ -394,4 +389,42 @@ function Base.getindex(A::FlintRationalMatrix, i::Int, j::Int)
     den = BigInt()
     ccall((:fmpz_get_mpz, libflint), Cvoid, (Ref{BigInt}, Ptr{Int}), den, ptr)
     return Rational{BigInt}(num, den)
+end
+
+################################################################################
+
+function construct_reduced_matrix(lp::LinearProgram, indices::Vector{Int})
+    num_rows = length(lp.b)
+    num_columns = length(lp.a_start) - 1
+    A = FlintIntegerMatrix(num_rows, length(indices))
+    for (j, column_index) in enumerate(indices)
+        @assert 1 <= column_index <= num_columns
+        for p = Int(lp.a_start[column_index])+1:Int(lp.a_start[column_index+1])
+            A[Int(lp.a_index[p])+1, j] = Int(lp.a_value[p])
+        end
+    end
+    return A
+end
+
+function solve_certified(lp::LinearProgram)
+    numerical_solution = solve_linear_program(lp)
+    support_indices = findall(>(1.0e-10), numerical_solution)
+    A = construct_reduced_matrix(lp, support_indices)
+    B = FlintIntegerMatrix(length(lp.b), 1)
+    for i in eachindex(lp.b)
+        if !iszero(lp.b[i])
+            B[i, 1] = Int(lp.b[i])
+        end
+    end
+    X = FlintRationalMatrix(length(support_indices), 1)
+    ccall((:fmpq_mat_can_solve_fmpz_mat_multi_mod, libflint),
+        Cint, (Ref{FlintRationalMatrix},
+            Ref{FlintIntegerMatrix}, Ref{FlintIntegerMatrix}),
+        X, A, B)
+    a = SparseMatrixCSC(length(lp.b), length(lp.a_start) - 1,
+        Int.(lp.a_start) .+ 1, Int.(lp.a_index) .+ 1, Int.(lp.a_value))
+    x = SparseVector(length(lp.a_start) - 1,
+        support_indices, [X[i, 1] for i = 1:length(support_indices)])
+    b = a * x
+    return (b.nzind == [1]) && (b.nzval == [1])
 end
