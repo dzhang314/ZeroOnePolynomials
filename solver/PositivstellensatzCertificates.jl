@@ -54,10 +54,14 @@ end
 end
 
 
-################################################################ BOX CONSTRAINTS
+################################################################# BOX GENERATORS
 
 
-function build_terms(terms::Dict{NTuple{N,Int},Int}, i::Int, n::Int) where {N}
+function build_box_product(
+    terms::Dict{NTuple{N,Int},Int},
+    i::Int,
+    n::Int,
+) where {N}
     if i > n
         result = copy(terms)
         for ((z, j...), c) in terms
@@ -78,7 +82,7 @@ function build_terms(terms::Dict{NTuple{N,Int},Int}, i::Int, n::Int) where {N}
 end
 
 
-function construct_quadratic_box_constraints(n::Int)
+function construct_quadratic_box_generators(n::Int)
     num_columns = div((2 * n + 1) * (2 * n), 2)
     num_entries = div((3 * n + 1) * (3 * n), 2)
     a_start = HighsInt[]
@@ -88,13 +92,13 @@ function construct_quadratic_box_constraints(n::Int)
     sizehint!(a_index, num_entries)
     sizehint!(a_value, num_entries)
     push!(a_start, zero(HighsInt))
-    terms = Dict{Tuple{Int,Int},Int}()
-    terms[(0, 0)] = 1
+    box_product = Dict{Tuple{Int,Int},Int}()
+    box_product[(0, 0)] = 1
     for i = 1:2*n
-        terms_i = build_terms(terms, i, n)
+        box_product_i = build_box_product(box_product, i, n)
         for j = i:2*n
-            terms_j = build_terms(terms_i, j, n)
-            for ((x, y), c) in terms_j
+            box_product_ij = build_box_product(box_product_i, j, n)
+            for ((x, y), c) in box_product_ij
                 push!(a_index, sorted_monomial_index(n, x, y))
                 push!(a_value, -c)
             end
@@ -108,7 +112,7 @@ function construct_quadratic_box_constraints(n::Int)
 end
 
 
-function construct_cubic_box_constraints(n::Int)
+function construct_cubic_box_generators(n::Int)
     num_columns = div((2 * n + 2) * (2 * n + 1) * (2 * n), 6)
     num_entries = div((3 * n + 2) * (3 * n + 1) * (3 * n), 6)
     a_start = HighsInt[]
@@ -118,15 +122,15 @@ function construct_cubic_box_constraints(n::Int)
     sizehint!(a_index, num_entries)
     sizehint!(a_value, num_entries)
     push!(a_start, zero(HighsInt))
-    terms = Dict{Tuple{Int,Int,Int},Int}()
-    terms[(0, 0, 0)] = 1
+    box_product = Dict{Tuple{Int,Int,Int},Int}()
+    box_product[(0, 0, 0)] = 1
     for i = 1:2*n
-        terms_i = build_terms(terms, i, n)
+        box_product_i = build_box_product(box_product, i, n)
         for j = i:2*n
-            terms_j = build_terms(terms_i, j, n)
+            box_product_ij = build_box_product(box_product_i, j, n)
             for k = j:2*n
-                terms_k = build_terms(terms_j, k, n)
-                for ((x, y, z), c) in terms_k
+                box_product_ijk = build_box_product(box_product_ij, k, n)
+                for ((x, y, z), c) in box_product_ijk
                     push!(a_index, sorted_monomial_index(n, x, y, z))
                     push!(a_value, -c)
                 end
@@ -141,14 +145,14 @@ function construct_cubic_box_constraints(n::Int)
 end
 
 
-########################################################### EQUATION CONSTRAINTS
+############################################################### IDEAL GENERATORS
 
 
 const Equation = Vector{Tuple{Int,Int}}
 const System = Vector{Equation}
 
 
-function add_linear_equation_constraint!(
+function add_ideal_generators_linear!(
     a_start::Vector{HighsInt},
     a_index::Vector{HighsInt},
     a_value::Vector{Cdouble},
@@ -175,7 +179,7 @@ function add_linear_equation_constraint!(
 end
 
 
-function add_quadratic_equation_constraint!(
+function add_ideal_generators_quadratic!(
     a_start::Vector{HighsInt},
     a_index::Vector{HighsInt},
     a_value::Vector{Cdouble},
@@ -217,20 +221,20 @@ function construct_quadratic_constraint_matrix(system::System)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
     cache_result = lock(QUADRATIC_LOCK) do
         return get!(QUADRATIC_CACHE, n) do
-            return construct_quadratic_box_constraints(n)
+            return construct_quadratic_box_generators(n)
         end
     end
     a_start, a_index, a_value = copy.(cache_result)
     for equation in system
         if all(iszero(j) for (i, j) in equation)
-            add_linear_equation_constraint!(
+            add_ideal_generators_linear!(
                 a_start, a_index, a_value, equation, n)
             for j = 1:n
-                add_linear_equation_constraint!(
+                add_ideal_generators_linear!(
                     a_start, a_index, a_value, equation, n, j)
             end
         else
-            add_quadratic_equation_constraint!(
+            add_ideal_generators_quadratic!(
                 a_start, a_index, a_value, equation, n)
         end
     end
@@ -242,29 +246,29 @@ function construct_cubic_constraint_matrix(system::System)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
     cache_result = lock(CUBIC_LOCK) do
         return get!(CUBIC_CACHE, n) do
-            return construct_cubic_box_constraints(n)
+            return construct_cubic_box_generators(n)
         end
     end
     a_start, a_index, a_value = copy.(cache_result)
     for equation in system
         if all(iszero(j) for (i, j) in equation)
-            add_linear_equation_constraint!(
+            add_ideal_generators_linear!(
                 a_start, a_index, a_value, equation, n)
             for j = 1:n
-                add_linear_equation_constraint!(
+                add_ideal_generators_linear!(
                     a_start, a_index, a_value, equation, n, j)
             end
             for j = 1:n
                 for k = j:n
-                    add_linear_equation_constraint!(
+                    add_ideal_generators_linear!(
                         a_start, a_index, a_value, equation, n, j, k)
                 end
             end
         else
-            add_quadratic_equation_constraint!(
+            add_ideal_generators_quadratic!(
                 a_start, a_index, a_value, equation, n)
             for k = 1:n
-                add_quadratic_equation_constraint!(
+                add_ideal_generators_quadratic!(
                     a_start, a_index, a_value, equation, n, k)
             end
         end
@@ -427,7 +431,7 @@ end
 export solve_exact
 
 
-function construct_reduced_matrix(lp::LinearProgram, indices::Vector{Int})
+function construct_flint_submatrix(lp::LinearProgram, indices::Vector{Int})
     num_rows = length(lp.b)
     num_columns = length(lp.a_start) - 1
     A = FlintIntegerMatrix(num_rows, length(indices))
@@ -448,7 +452,7 @@ function solve_exact(lp::LinearProgram)
     end
     indices = findall(>(1.0e-10), numerical_solution)
     values = Vector{Rational{BigInt}}(undef, length(indices))
-    A = construct_reduced_matrix(lp, indices)
+    A = construct_flint_submatrix(lp, indices)
     B = FlintIntegerMatrix(length(lp.b), 1)
     X = FlintRationalMatrix(length(indices), 1)
     try
