@@ -204,12 +204,12 @@ const CUBIC_CACHE =
 
 function construct_quadratic_constraint_matrix(system::System)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
-    a_start, a_index, a_value = lock(QUADRATIC_LOCK) do
-        if !haskey(QUADRATIC_CACHE, n)
-            QUADRATIC_CACHE[n] = construct_quadratic_box_constraints(n)
+    cache_result = lock(QUADRATIC_LOCK) do
+        return get!(QUADRATIC_CACHE, n) do
+            return construct_quadratic_box_constraints(n)
         end
-        return copy.(QUADRATIC_CACHE[n])
     end
+    a_start, a_index, a_value = copy.(cache_result)
     for equation in system
         if all(iszero(j) for (i, j) in equation)
             add_linear_equation_constraint!(
@@ -228,12 +228,12 @@ end
 
 function construct_cubic_constraint_matrix(system::System)
     n = maximum(max(i, j) for equation in system for (i, j) in equation)
-    a_start, a_index, a_value = lock(CUBIC_LOCK) do
-        if !haskey(CUBIC_CACHE, n)
-            CUBIC_CACHE[n] = construct_cubic_box_constraints(n)
+    cache_result = lock(CUBIC_LOCK) do
+        return get!(CUBIC_CACHE, n) do
+            return construct_cubic_box_constraints(n)
         end
-        return copy.(CUBIC_CACHE[n])
     end
+    a_start, a_index, a_value = copy.(cache_result)
     for equation in system
         if all(iszero(j) for (i, j) in equation)
             add_linear_equation_constraint!(
@@ -408,6 +408,9 @@ end
 
 function solve_certified(lp::LinearProgram)
     numerical_solution = solve_linear_program(lp)
+    if isnothing(numerical_solution)
+        return false
+    end
     support_indices = findall(>(1.0e-10), numerical_solution)
     A = construct_reduced_matrix(lp, support_indices)
     B = FlintIntegerMatrix(length(lp.b), 1)
