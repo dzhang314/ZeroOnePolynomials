@@ -517,7 +517,11 @@ function solve_exact(
             return nothing
         end
         for i = 1:length(indices)
-            values[i] = X[i, 1]
+            value = X[i, 1]
+            if signbit(value)
+                return nothing
+            end
+            values[i] = value
         end
     finally
         finalize(A)
