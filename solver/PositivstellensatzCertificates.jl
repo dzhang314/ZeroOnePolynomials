@@ -347,7 +347,7 @@ function solve_highs(lp::LinearProgram)
         @assert iszero(status)
         status = ccall((:Highs_setDoubleOptionValue, libhighs),
             Cint, (Ptr{Cvoid}, Cstring, Cdouble),
-            instance, "kkt_tolerance", Cdouble(1.0e-10))
+            instance, "primal_feasibility_tolerance", Cdouble(1.0e-10))
         @assert iszero(status)
         status = ccall((:Highs_passLp, libhighs),
             Cint, (Ptr{Cvoid}, Cint, Cint, Cint, Cint, Cint, Cdouble,
