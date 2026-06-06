@@ -10,6 +10,7 @@
         "DZERO",
         "elim",
         "Finset",
+        "flto",
         "fmpq",
         "fmpz",
         "fwhole",

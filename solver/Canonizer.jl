@@ -4,85 +4,8 @@ using Base.Threads: @threads
 using NautyGraphs: NautyGraph, add_edge!, canonize!, edges
 using Printf: @sprintf
 
-
-const _ZERO = UInt8('0')
-const _NINE = UInt8('9')
-
-@inline function parse_int(bytes::Vector{UInt8}, i::Int)
-    n = length(bytes)
-    result = 0
-    @inbounds while i <= n
-        b = bytes[i]
-        if !((b >= _ZERO) & (b <= _NINE))
-            break
-        end
-        result = muladd(10, result, Int(b - _ZERO))
-        i += 1
-    end
-    return (result, i)
-end
-
-
-const _P = UInt8('p')
-const _Q = UInt8('q')
-const _STAR = UInt8('*')
-
-@inline function parse_term(bytes::Vector{UInt8}, i::Int)
-    n = length(bytes)
-    @inbounds begin
-        head = bytes[i]
-        if head == _P
-            p, i = parse_int(bytes, i + 1)
-            if (i < n) && (bytes[i] == _STAR)
-                @assert bytes[i+1] == _Q
-                q, i = parse_int(bytes, i + 2)
-                return ((p, q), i)
-            else
-                return ((p, 0), i)
-            end
-        else
-            @assert head == _Q
-            q, i = parse_int(bytes, i + 1)
-            return ((0, q), i)
-        end
-    end
-end
-
-
-const _PLUS = UInt8('+')
-const _SP = UInt8(' ')
-const _NL = UInt8('\n')
-
-function load_systems(path::AbstractString)
-    bytes = read(path)
-    n = length(bytes)
-    equation = Tuple{Int,Int}[]
-    system = Vector{Tuple{Int,Int}}[]
-    result = Vector{Vector{Tuple{Int,Int}}}[]
-    i = 1
-    @inbounds while i <= n
-        b = bytes[i]
-        if (b == _PLUS) | (b == _SP)
-            i += 1
-        elseif b == _NL
-            if isempty(equation)
-                push!(result, system)
-                system = Vector{Tuple{Int,Int}}[]
-                i += 1
-            else
-                push!(system, equation)
-                equation = Tuple{Int,Int}[]
-                i += 1
-            end
-        else
-            term, i = parse_term(bytes, i)
-            push!(equation, term)
-        end
-    end
-    @assert isempty(equation)
-    @assert isempty(system)
-    return result
-end
+push!(LOAD_PATH, @__DIR__)
+using EquationParser: load_pq_systems
 
 
 function canonize(system::Vector{Vector{Tuple{Int,Int}}})
@@ -170,7 +93,7 @@ function main()
             count = 0
             println("Loading input file: ", input_path)
             flush(stdout)
-            raw_systems = load_systems(input_path)
+            raw_systems = load_pq_systems(input_path)
             println("Loaded ", length(raw_systems), " systems.")
             flush(stdout)
             systems = similar(raw_systems)
