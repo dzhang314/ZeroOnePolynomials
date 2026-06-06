@@ -1,16 +1,9 @@
 module PositivstellensatzCertificates
 
+using Clp_jll: libClp
 using FLINT_jll: libflint
-
-using HiGHS: HighsInt, Highs_create, Highs_destroy,
-    Highs_getModelStatus, Highs_getSolution, Highs_passLp,
-    Highs_run, Highs_setBoolOptionValue, Highs_setDoubleOptionValue,
-    kHighsMatrixFormatColwise, kHighsModelStatusOptimal,
-    kHighsObjSenseMinimize, kHighsStatusOk, kHighsStatusWarning
-
+using HiGHS_jll: libhighs
 using SparseArrays: SparseMatrixCSC, SparseVector
-
-@assert HighsInt == Cint
 
 ############################################################## MONOMIAL INDEXING
 
@@ -320,47 +313,101 @@ function construct_linear_program(system::System, problem::Symbol)
 end
 
 
-############################################################# NUMERICAL SOLUTION
+############################################################ LP SOLVER INTERFACE
 
 
-export solve_linear_program
+export solve_highs, solve_clp
 
 
-function solve_linear_program(lp::LinearProgram)
+function l0_cost(lp::LinearProgram)
+    num_columns = length(lp.a_start) - 1
+    result = Vector{Cdouble}(undef, num_columns)
+    @simd ivdep for j = 1:num_columns
+        @inbounds result[j] = lp.a_start[j+1] - lp.a_start[j]
+    end
+    return result
+end
+
+
+const HIGHS_MODEL_STATUS_OPTIMAL = Cint(7)
+
+
+function solve_highs(lp::LinearProgram)
     num_columns = length(lp.a_start) - 1
     num_entries = length(lp.a_index)
     num_rows = length(lp.b)
-    column_cost = Vector{Cdouble}(undef, num_columns)
-    @simd ivdep for j = 1:num_columns
-        @inbounds column_cost[j] = lp.a_start[j+1] - lp.a_start[j]
-    end
+    weights = l0_cost(lp)
     column_lower_bound = zeros(Cdouble, num_columns)
     column_upper_bound = fill(Cdouble(+Inf), num_columns)
-    instance = Highs_create()
+    instance = ccall((:Highs_create, libhighs), Ptr{Cvoid}, ())
     try
-        status = Highs_setBoolOptionValue(
+        status = ccall((:Highs_setBoolOptionValue, libhighs),
+            Cint, (Ptr{Cvoid}, Cstring, Cint),
             instance, "output_flag", zero(Cint))
-        @assert status == kHighsStatusOk
-        status = Highs_setDoubleOptionValue(
+        @assert iszero(status)
+        status = ccall((:Highs_setDoubleOptionValue, libhighs),
+            Cint, (Ptr{Cvoid}, Cstring, Cdouble),
             instance, "kkt_tolerance", Cdouble(1.0e-10))
-        @assert status == kHighsStatusOk
-        status = Highs_passLp(instance,
-            num_columns, num_rows, num_entries, kHighsMatrixFormatColwise,
-            kHighsObjSenseMinimize, zero(Cdouble), column_cost,
-            column_lower_bound, column_upper_bound, lp.b, lp.b,
+        @assert iszero(status)
+        status = ccall((:Highs_passLp, libhighs),
+            Cint, (Ptr{Cvoid}, Cint, Cint, Cint, Cint, Cint, Cdouble,
+                Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble},
+                Ptr{Cdouble}, Ptr{Cdouble},
+                Ptr{Cint}, Ptr{Cint}, Ptr{Cdouble}),
+            instance, num_columns, num_rows, num_entries,
+            one(Cint), one(Cint), zero(Cdouble),
+            weights, column_lower_bound, column_upper_bound, lp.b, lp.b,
             lp.a_start, lp.a_index, lp.a_value)
-        @assert status == kHighsStatusOk
-        status = Highs_run(instance)
-        @assert (status == kHighsStatusOk) | (status == kHighsStatusWarning)
-        if Highs_getModelStatus(instance) != kHighsModelStatusOptimal
+        @assert iszero(status)
+        status = ccall((:Highs_run, libhighs), Cint, (Ptr{Cvoid},), instance)
+        @assert iszero(status) | isone(status)
+        model_status = ccall((:Highs_getModelStatus, libhighs),
+            Cint, (Ptr{Cvoid},), instance)
+        if model_status != HIGHS_MODEL_STATUS_OPTIMAL
             return nothing
         end
         solution = Vector{Cdouble}(undef, num_columns)
-        status = Highs_getSolution(instance, solution, C_NULL, C_NULL, C_NULL)
-        @assert status == kHighsStatusOk
+        status = ccall((:Highs_getSolution, libhighs),
+            Cint, (Ptr{Cvoid},
+                Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+            instance, solution, C_NULL, C_NULL, C_NULL)
+        @assert iszero(status)
         return solution
     finally
-        Highs_destroy(instance)
+        ccall((:Highs_destroy, libhighs), Cvoid, (Ptr{Cvoid},), instance)
+    end
+end
+
+
+function solve_clp(lp::LinearProgram)
+    num_columns = length(lp.a_start) - 1
+    num_rows = length(lp.b)
+    weights = l0_cost(lp)
+    instance = ccall((:Clp_newModel, libClp), Ptr{Cvoid}, ())
+    try
+        ccall((:Clp_setLogLevel, libClp),
+            Cvoid, (Ptr{Cvoid}, Cint), instance, zero(Cint))
+        ccall((:Clp_loadProblem, libClp),
+            Cvoid, (Ptr{Cvoid}, Cint, Cint,
+                Ptr{Cint}, Ptr{Cint}, Ptr{Cdouble},
+                Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble},
+                Ptr{Cdouble}, Ptr{Cdouble}),
+            instance, num_columns, num_rows,
+            lp.a_start, lp.a_index, lp.a_value,
+            C_NULL, C_NULL, weights, lp.b, lp.b)
+        status = ccall((:Clp_initialSolve, libClp),
+            Cint, (Ptr{Cvoid},), instance)
+        if !iszero(status)
+            return nothing
+        end
+        ptr = ccall((:Clp_getColSolution, libClp),
+            Ptr{Cdouble}, (Ptr{Cvoid},), instance)
+        @assert ptr != C_NULL
+        result = Vector{Cdouble}(undef, num_columns)
+        unsafe_copyto!(pointer(result), ptr, num_columns)
+        return result
+    finally
+        ccall((:Clp_deleteModel, libClp), Cvoid, (Ptr{Cvoid},), instance)
     end
 end
 
@@ -430,7 +477,7 @@ function Base.getindex(A::FlintRationalMatrix, i::Int, j::Int)
 end
 
 
-################################################################# EXACT SOLUTION
+################################################################### EXACT SOLVER
 
 
 export solve_exact
@@ -450,12 +497,12 @@ function construct_flint_submatrix(lp::LinearProgram, indices::Vector{Int})
 end
 
 
-function solve_exact(lp::LinearProgram)
-    numerical_solution = solve_linear_program(lp)
-    if isnothing(numerical_solution)
-        return nothing
-    end
-    indices = findall(>(1.0e-10), numerical_solution)
+function solve_exact(
+    lp::LinearProgram,
+    numerical_solution::Vector{Cdouble},
+    threshold::Cdouble,
+)
+    indices = findall(>(threshold), numerical_solution)
     values = Vector{Rational{BigInt}}(undef, length(indices))
     A = construct_flint_submatrix(lp, indices)
     B = FlintIntegerMatrix(length(lp.b), 1)

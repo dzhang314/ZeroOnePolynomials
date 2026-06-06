@@ -19,6 +19,7 @@
         "keepempty",
         "leanprover",
         "libflint",
+        "libhighs",
         "linarith",
         "mathlib",
         "monic",
