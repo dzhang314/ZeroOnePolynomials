@@ -16,7 +16,8 @@ using .EquationParser: load_canonical_systems, print_canonical_system
     $(read(joinpath(@__DIR__, "PositivstellensatzCertificates.jl"), String)),
     "PositivstellensatzCertificates.jl")
 @everywhere using .PositivstellensatzCertificates:
-    construct_linear_program, solve_highs, solve_exact
+    construct_linear_program, solve_highs, solve_exact,
+    print_quadratic_certificate, print_cubic_certificate
 
 
 @everywhere const Equation = Vector{Tuple{Int,Int}}
