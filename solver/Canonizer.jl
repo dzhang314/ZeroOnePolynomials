@@ -5,7 +5,7 @@ using NautyGraphs: NautyGraph, add_edge!, canonize!, edges
 using Printf: @sprintf
 
 push!(LOAD_PATH, @__DIR__)
-using EquationParser: print_canonical_system, load_pq_systems
+using EquationParser: load_pq_systems, print_canonical_system
 
 
 function canonize(system::Vector{Vector{Tuple{Int,Int}}})
