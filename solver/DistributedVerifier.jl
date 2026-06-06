@@ -87,8 +87,8 @@ end
 
 
 function producer_loop(systems::Dict{String,System}, queue::RemoteChannel)
-    for d = [49] # 0:typemax(Int)
-        for (m, n) in [(22, 27)] # degree_pairs(d)
+    for d = 0:typemax(Int)
+        for (m, n) in degree_pairs(d)
             input_path = canonical_file_path(d, m, n)
             if !isfile(input_path)
                 println(stderr, "File ", input_path, " not found.")
