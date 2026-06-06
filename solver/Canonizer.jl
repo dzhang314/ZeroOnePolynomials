@@ -5,7 +5,7 @@ using NautyGraphs: NautyGraph, add_edge!, canonize!, edges
 using Printf: @sprintf
 
 push!(LOAD_PATH, @__DIR__)
-using EquationParser: load_pq_systems
+using EquationParser: print_canonical_system, load_pq_systems
 
 
 function canonize(system::Vector{Vector{Tuple{Int,Int}}})
@@ -70,15 +70,6 @@ data_file_path(d::Int, m::Int, n::Int) = joinpath("data",
 canonical_file_path(d::Int, m::Int, n::Int) = joinpath("data",
     @sprintf("CanonicalEquations-%04d-%04d-%04d.txt", d, m, n))
 
-term_string(i::Int, j::Int) =
-    iszero(j) ? @sprintf("x%d", i) : @sprintf("x%d*x%d", i, j)
-
-equation_string(equation::Vector{Tuple{Int,Int}}) =
-    join((term_string(i, j) for (i, j) in equation), " + ")
-
-system_string(system::Vector{Vector{Tuple{Int,Int}}}) =
-    join((equation_string(equation) for equation in system), '\n')
-
 
 function main()
     canonical_systems = Set{Vector{Vector{Tuple{Int,Int}}}}()
@@ -108,7 +99,8 @@ function main()
                     if !(system in canonical_systems)
                         push!(canonical_systems, system)
                         count += 1
-                        println(io, system_string(system), '\n')
+                        print_canonical_system(io, system)
+                        print(io, '\n')
                     end
                 end
             end

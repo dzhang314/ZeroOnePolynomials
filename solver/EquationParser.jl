@@ -1,6 +1,49 @@
 module EquationParser
 
-export load_pq_systems, load_canonical_systems
+export print_canonical_system, load_pq_systems, load_canonical_systems
+
+
+const Term = Tuple{Int,Int}
+const Equation = Vector{Term}
+const System = Vector{Equation}
+
+
+function print_canonical_term(io::IO, i::Int, j::Int)
+    print(io, 'x')
+    print(io, i)
+    if !iszero(j)
+        print(io, "*x")
+        print(io, j)
+    end
+    return nothing
+end
+
+
+function print_canonical_equation(io::IO, equation::Equation)
+    if isempty(equation)
+        print(io, '0')
+    else
+        first_term = true
+        for (i, j) in equation
+            if first_term
+                first_term = false
+            else
+                print(io, " + ")
+            end
+            print_canonical_term(io, i, j)
+        end
+    end
+    return nothing
+end
+
+
+function print_canonical_system(io::IO, system::System)
+    for equation in system
+        print_canonical_equation(io, equation)
+        print(io, '\n')
+    end
+    return nothing
+end
 
 
 const _ZERO = UInt8('0')
@@ -64,10 +107,6 @@ const _X = UInt8('x')
     end
 end
 
-
-const Term = Tuple{Int,Int}
-const Equation = Vector{Term}
-const System = Vector{Equation}
 
 const _PLUS = UInt8('+')
 const _SPACE = UInt8(' ')

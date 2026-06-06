@@ -656,7 +656,7 @@ function print_quadratic_certificate(
             entry = get(solution, index, nothing)
             if !isnothing(entry)
                 print_box_term(box_buffer, entry, n, i, j)
-                println(box_buffer)
+                print(box_buffer, '\n')
             end
             index += 1
         end
@@ -700,7 +700,7 @@ function print_cubic_certificate(
                 entry = get(solution, index, nothing)
                 if !isnothing(entry)
                     print_box_term(box_buffer, entry, n, i, j, k)
-                    println(box_buffer)
+                    print(box_buffer, '\n')
                 end
                 index += 1
             end
