@@ -499,7 +499,7 @@ function solve_exact(
     threshold::Cdouble,
 )
     indices = findall(>(threshold), numerical_solution)
-    values = Vector{Rational{BigInt}}(undef, length(indices))
+    entries = Vector{Rational{BigInt}}(undef, length(indices))
     A = construct_flint_submatrix(lp, indices)
     B = FlintIntegerMatrix(length(lp.b), 1)
     X = FlintRationalMatrix(length(indices), 1)
@@ -521,7 +521,7 @@ function solve_exact(
             if signbit(value)
                 return nothing
             end
-            values[i] = value
+            entries[i] = value
         end
     finally
         finalize(A)
@@ -530,9 +530,212 @@ function solve_exact(
     end
     a = SparseMatrixCSC(length(lp.b), length(lp.a_start) - 1,
         Int.(lp.a_start) .+ 1, Int.(lp.a_index) .+ 1, Int.(lp.a_value))
-    x = SparseVector(length(lp.a_start) - 1, indices, values)
+    x = SparseVector(length(lp.a_start) - 1, indices, entries)
     b = a * x
-    return ((b.nzind == [1]) && (b.nzval == [1])) ? (indices, values) : nothing
+    return (b.nzind == [1]) && (b.nzval == [1]) ? (indices, entries) : nothing
+end
+
+
+######################################################### CERTIFICATE EXTRACTION
+
+
+export print_quadratic_certificate, print_cubic_certificate
+
+
+function print_rational(io::IO, x::Rational{BigInt})
+    @assert !iszero(x)
+    print(io, numerator(x))
+    d = denominator(x)
+    if !isone(d)
+        print(io, '/')
+        print(io, d)
+    end
+    return nothing
+end
+
+
+function print_box_term(io::IO, c::Rational{BigInt}, n::Int, i::Int...)
+    @assert !signbit(c)
+    if !isone(c)
+        print_rational(io, c)
+        print(io, '*')
+    end
+    for j in Base.front(i)
+        if j > n
+            print(io, "(1-x")
+            print(io, j - n)
+            print(io, ")*")
+        else
+            print(io, 'x')
+            print(io, j)
+            print(io, '*')
+        end
+    end
+    j = last(i)
+    if j > n
+        print(io, "(1-x")
+        print(io, j - n)
+        print(io, ')')
+    else
+        print(io, 'x')
+        print(io, j)
+    end
+    return nothing
+end
+
+
+function push_paired_term!(
+    terms::Vector{String},
+    solution::Dict{Int,Rational{BigInt}},
+    index::Int,
+    i::Int...,
+)
+    entry_pos = get(solution, index + 0, nothing)
+    entry_neg = get(solution, index + 1, nothing)
+    if isnothing(entry_pos) & isnothing(entry_neg)
+        return terms
+    end
+    entry = isnothing(entry_neg) ? entry_pos :
+            isnothing(entry_pos) ? -entry_neg :
+            entry_pos - entry_neg
+    @assert !iszero(entry)
+    term_buffer = IOBuffer()
+    if isempty(i)
+        print_rational(term_buffer, entry)
+    elseif isone(entry)
+        print(term_buffer, 'x')
+    elseif isone(-entry)
+        print(term_buffer, "-x")
+    else
+        print_rational(term_buffer, entry)
+        print(term_buffer, "*x")
+    end
+    if !isempty(i)
+        for j in Base.front(i)
+            print(term_buffer, j)
+            print(term_buffer, "*x")
+        end
+        print(term_buffer, last(i))
+    end
+    push!(terms, String(take!(term_buffer)))
+    return terms
+end
+
+
+function print_polynomial(io::IO, terms::Vector{String})
+    if isempty(terms)
+        print(io, '0')
+    else
+        print(io, terms[1])
+        for term in view(terms, 2:length(terms))
+            if startswith(term, '-')
+                print(io, " - ")
+                print(io, term[2:end])
+            else
+                print(io, " + ")
+                print(io, term)
+            end
+        end
+    end
+    return nothing
+end
+
+
+function print_quadratic_certificate(
+    io::IO,
+    system::System,
+    indices::Vector{Int},
+    entries::Vector{Rational{BigInt}},
+)
+    n = maximum(max(i, j) for equation in system for (i, j) in equation)
+    solution = Dict{Int,Rational{BigInt}}(indices .=> entries)
+    index = 1
+    box_buffer = IOBuffer()
+    for i = 1:2*n
+        for j = i:2*n
+            entry = get(solution, index, nothing)
+            if !isnothing(entry)
+                print_box_term(box_buffer, entry, n, i, j)
+                println(box_buffer)
+            end
+            index += 1
+        end
+    end
+    for equation in system
+        cofactor = String[]
+        if all(iszero(j) for (i, j) in equation)
+            push_paired_term!(cofactor, solution, index)
+            index += 2
+            for j = 1:n
+                push_paired_term!(cofactor, solution, index, j)
+                index += 2
+            end
+        else
+            push_paired_term!(cofactor, solution, index)
+            index += 2
+        end
+        print_polynomial(io, cofactor)
+        print(io, '\n')
+    end
+    @assert all(<(index), indices)
+    print(io, '\n')
+    write(io, take!(box_buffer))
+    return nothing
+end
+
+
+function print_cubic_certificate(
+    io::IO,
+    system::System,
+    indices::Vector{Int},
+    entries::Vector{Rational{BigInt}},
+)
+    n = maximum(max(i, j) for equation in system for (i, j) in equation)
+    solution = Dict{Int,Rational{BigInt}}(indices .=> entries)
+    index = 1
+    box_buffer = IOBuffer()
+    for i = 1:2*n
+        for j = i:2*n
+            for k = j:2*n
+                entry = get(solution, index, nothing)
+                if !isnothing(entry)
+                    print_box_term(box_buffer, entry, n, i, j, k)
+                    println(box_buffer)
+                end
+                index += 1
+            end
+        end
+    end
+    for equation in system
+        cofactor = String[]
+        if all(iszero(j) for (i, j) in equation)
+            push_paired_term!(cofactor, solution, index)
+            index += 2
+            for j = 1:n
+                push_paired_term!(cofactor, solution, index, j)
+                index += 2
+            end
+            for j = 1:n
+                for k = j:n
+                    push_paired_term!(cofactor, solution, index, j, k)
+                    index += 2
+                end
+            end
+        else
+            push_paired_term!(cofactor, solution, index)
+            index += 2
+            for k = 1:n
+                push_paired_term!(cofactor, solution, index, k)
+                index += 2
+            end
+        end
+        print_polynomial(io, cofactor)
+        print(io, '\n')
+    end
+    @assert all(<(index), indices)
+    print(io, '\n')
+    write(io, take!(box_buffer))
+    return nothing
 end
 
 
