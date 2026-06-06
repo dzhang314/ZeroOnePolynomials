@@ -2,12 +2,12 @@
 
 using Distributed: @everywhere, RemoteChannel,
     myid, nworkers, remotecall, workers
-using Printf: @sprintf
-using SHA: sha256
-
 
 println(stdout, "Running distributed verification with $(nworkers()) workers.")
 flush(stdout)
+
+using Printf: @sprintf
+using SHA: sha256
 
 include(joinpath(@__DIR__, "EquationParser.jl"))
 using .EquationParser: load_canonical_systems, print_canonical_system
@@ -15,7 +15,8 @@ using .EquationParser: load_canonical_systems, print_canonical_system
 @everywhere include_string(Main,
     $(read(joinpath(@__DIR__, "PositivstellensatzCertificates.jl"), String)),
     "PositivstellensatzCertificates.jl")
-@everywhere using .PositivstellensatzCertificates
+@everywhere using .PositivstellensatzCertificates:
+    construct_linear_program, solve_highs, solve_exact
 
 
 @everywhere const Equation = Vector{Tuple{Int,Int}}
@@ -44,8 +45,8 @@ end
 
 
 const WorkItem = Tuple{String,System}
-const WorkerResult = Tuple{Int,Symbol,String,
-    Union{Nothing,String,Tuple{Int,Vector{Int},Vector{Rational{BigInt}}}}}
+const WorkerResult = Tuple{Int,Symbol,String,Union{
+    Nothing,String,Tuple{Int,Vector{Int},Vector{Rational{BigInt}}}}}
 
 
 @everywhere function worker_loop(queue::RemoteChannel, results::RemoteChannel)
@@ -69,6 +70,22 @@ degree_pairs(d::Int) =
 canonical_file_path(d::Int, m::Int, n::Int) = joinpath("data",
     @sprintf("CanonicalEquations-%04d-%04d-%04d.txt", d, m, n))
 
+proof_file_path(key::String) = joinpath("proofs", key * ".txt")
+
+
+function proof_exists(key::String, str::String)
+    proof_path = proof_file_path(key)
+    if isfile(proof_path)
+        open(proof_path) do io
+            @assert startswith(io, str)
+        end
+        return true
+    else
+        return false
+    end
+end
+
+
 function producer_loop(systems::Dict{String,System}, queue::RemoteChannel)
     for d = [49] # 0:typemax(Int)
         for (m, n) in [(22, 27)] # degree_pairs(d)
@@ -79,20 +96,22 @@ function producer_loop(systems::Dict{String,System}, queue::RemoteChannel)
                 return nothing
             end
             for system in load_canonical_systems(input_path)
-                key = bytes2hex(sha256(sprint(print_canonical_system, system)))
+                str = sprint(print_canonical_system, system)
+                key = bytes2hex(sha256(str))
                 @assert !haskey(systems, key)
                 systems[key] = system
-                put!(queue, (key, system))
+                if proof_exists(key, str)
+                    println(stdout, "Proof $key already exists.")
+                    flush(stdout)
+                else
+                    put!(queue, (key, system))
+                end
             end
         end
     end
     return nothing
 end
 
-
-mkpath("proofs")
-
-proof_file_path(key::String) = joinpath("proofs", key * ".txt")
 
 function write_stub(key::String, system::System)
     open(proof_file_path(key) * ".temp", "w") do io
@@ -101,11 +120,13 @@ function write_stub(key::String, system::System)
     return nothing
 end
 
+
 function mark_failed(key::String)
     proof_path = proof_file_path(key)
-    mv(proof_path * ".temp", proof_path * ".failed")
+    mv(proof_path * ".temp", proof_path * ".failed"; force=true)
     return nothing
 end
+
 
 function write_proof(
     key::String,
@@ -149,6 +170,7 @@ function main()
     finally
         close(results)
     end
+    mkpath("proofs")
     for (id, status, key, result) in results
         if status == :start
             @assert isnothing(result)
