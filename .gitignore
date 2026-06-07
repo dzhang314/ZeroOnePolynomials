@@ -2,4 +2,4 @@
 /solver/bin/ZeroOneSolver-*-*
 /solver/data/CanonicalEquations-*-*-*.txt
 /solver/data/ZeroOneEquations-*-*-*.txt
-/solver/proofs/*.txt
+/solver/proofs/**

@@ -71,7 +71,8 @@ degree_pairs(d::Int) =
 canonical_file_path(d::Int, m::Int, n::Int) = joinpath("data",
     @sprintf("CanonicalEquations-%04d-%04d-%04d.txt", d, m, n))
 
-proof_file_path(key::String) = joinpath("proofs", key * ".txt")
+proof_file_path(key::String) =
+    joinpath("proofs", key[1:2], key[3:4], key * ".txt")
 
 
 function proof_exists(key::String, str::String)
@@ -115,7 +116,9 @@ end
 
 
 function write_stub(key::String, system::System)
-    open(proof_file_path(key) * ".temp", "w") do io
+    proof_path = proof_file_path(key)
+    mkpath(dirname(proof_path))
+    open(proof_path * ".temp", "w") do io
         print_canonical_system(io, system)
     end
     return nothing
@@ -171,7 +174,6 @@ function main()
     finally
         close(results)
     end
-    mkpath("proofs")
     for (id, status, key, result) in results
         if status == :start
             @assert isnothing(result)
