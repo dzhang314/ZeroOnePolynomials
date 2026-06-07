@@ -345,6 +345,10 @@ function solve_highs(lp::LinearProgram)
             Cint, (Ptr{Cvoid}, Cstring, Cint),
             instance, "output_flag", zero(Cint))
         @assert iszero(status)
+        status = ccall((:Highs_setIntOptionValue, libhighs),
+            Cint, (Ptr{Cvoid}, Cstring, Cint),
+            instance, "threads", one(Cint))
+        @assert iszero(status)
         status = ccall((:Highs_setDoubleOptionValue, libhighs),
             Cint, (Ptr{Cvoid}, Cstring, Cdouble),
             instance, "primal_feasibility_tolerance", Cdouble(1.0e-10))

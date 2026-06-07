@@ -161,8 +161,8 @@ end
 
 function main()
     systems = Dict{String,System}()
-    queue = RemoteChannel(() -> Channel{WorkItem}(4 * nworkers()))
-    results = RemoteChannel(() -> Channel{WorkerResult}(4 * nworkers()))
+    queue = RemoteChannel(() -> Channel{WorkItem}(256 * nworkers()))
+    results = RemoteChannel(() -> Channel{WorkerResult}(256 * nworkers()))
     producer = @async try
         producer_loop(systems, queue)
     finally
