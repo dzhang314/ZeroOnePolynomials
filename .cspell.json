@@ -8,6 +8,7 @@
         "Cvoid",
         "degrevlex",
         "docstrings",
+        "DTERNARY",
         "DZERO",
         "elim",
         "Finset",

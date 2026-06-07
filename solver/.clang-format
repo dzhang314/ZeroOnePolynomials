@@ -1,8 +1,10 @@
 IndentWidth: 4
+IndentCaseLabels: true
 MaxEmptyLinesToKeep: 2
 AccessModifierOffset: -4
 EmptyLineAfterAccessModifier: Always
 AllowShortBlocksOnASingleLine: Always
+AllowShortCaseLabelsOnASingleLine: true
 AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortLoopsOnASingleLine: true
 BreakConstructorInitializers: BeforeComma

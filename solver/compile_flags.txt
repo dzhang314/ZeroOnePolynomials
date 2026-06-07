@@ -2,5 +2,7 @@
 -Weverything
 -Wno-c++98-compat-pedantic
 -Wno-switch-default
+-DTERNARY_SOLVER_M=10
+-DTERNARY_SOLVER_N=20
 -DZERO_ONE_SOLVER_M=14
 -DZERO_ONE_SOLVER_N=30
