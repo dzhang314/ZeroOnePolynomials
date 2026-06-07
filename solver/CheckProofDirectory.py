@@ -55,7 +55,7 @@ def main():
                             if n % 100_000 == 0:
                                 print_progress(f"Found {n} proof files.")
     clear_progress()
-    print(f"Found {n} proof files in total.", flush=True)
+    print(f"Found {n} proof files in total.", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
