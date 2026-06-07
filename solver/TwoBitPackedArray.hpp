@@ -1,3 +1,6 @@
+#ifndef TWO_BIT_PACKED_ARRAY_HPP_INCLUDED
+#define TWO_BIT_PACKED_ARRAY_HPP_INCLUDED
+
 #include <cassert> // for assert
 #include <cstddef> // for std::byte, std::size_t
 
@@ -35,3 +38,6 @@ public:
     }
 
 }; // class TwoBitPackedArray<T, N>
+
+
+#endif // TWO_BIT_PACKED_ARRAY_HPP_INCLUDED
