@@ -105,17 +105,18 @@ def wait_for_process_to_finish(
             proc, exe, src, dst = processes[k]
             return_code = proc.poll()
             if return_code is not None:
-                if return_code == 0:
-                    print("Finished computing", dst + ".")
-                else:
-                    print("ERROR: Process", dst, "returned non-zero exit code.")
                 if os.path.isfile(exe):
                     os.remove(exe)
                 if os.path.isfile(exe + ".exe"):  # Windows compatibility
                     os.remove(exe + ".exe")
                 if proc.stdout is not None:
                     proc.stdout.close()
-                os.rename(src, dst)
+                if return_code == 0:
+                    print("Finished computing", dst + ".")
+                    os.rename(src, dst)
+                else:
+                    print("ERROR: Process", dst, "returned nonzero exit code.")
+                    os.replace(src, dst + ".failed")
                 del processes[k]
                 return None
         sleep(0.001)
