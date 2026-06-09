@@ -3,6 +3,7 @@
 using Base.Threads: @threads
 using NautyGraphs: NautyGraph, add_edge!, canonize!, edges
 using Printf: @sprintf
+using SHA: sha256
 
 push!(LOAD_PATH, @__DIR__)
 using EquationParser: load_pq_systems, print_canonical_system
@@ -70,6 +71,9 @@ data_file_path(d::Int, m::Int, n::Int) = joinpath("data",
 canonical_file_path(d::Int, m::Int, n::Int) = joinpath("data",
     @sprintf("CanonicalEquations-%04d-%04d-%04d.txt", d, m, n))
 
+index_file_path(d::Int, m::Int, n::Int) = joinpath("data",
+    @sprintf("CanonicalIndex-%04d-%04d-%04d.txt", d, m, n))
+
 
 function main()
     canonical_systems = Set{Vector{Vector{Tuple{Int,Int}}}}()
@@ -88,8 +92,11 @@ function main()
             println("Loaded ", length(raw_systems), " systems.")
             flush(stdout)
             systems = similar(raw_systems)
+            system_keys = Vector{String}(undef, length(raw_systems))
             @threads for i in eachindex(raw_systems)
                 systems[i] = canonize(raw_systems[i])
+                str = sprint(print_canonical_system, systems[i])
+                system_keys[i] = bytes2hex(sha256(str))
             end
             output_path = canonical_file_path(d, m, n)
             println("Writing output file: ", output_path)
@@ -106,6 +113,14 @@ function main()
             end
             println("Wrote $count new canonical systems.")
             flush(stdout)
+            index_path = index_file_path(d, m, n)
+            println("Writing index file: ", index_path)
+            flush(stdout)
+            open(index_path, "w") do io
+                for key in system_keys
+                    println(io, key)
+                end
+            end
         end
         println("Finished processing degree $d.")
         flush(stdout)
