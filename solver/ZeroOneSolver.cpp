@@ -179,7 +179,8 @@ static bool find_case_split(std::vector<System<M, N>> &stack,
         }
     }
 
-    // Phase 2: Split ... + p_i*q_j + ... == 0 into p_i == 0 and q_j == 0.
+    // Phase 2: Split ... + p_i*q_j + ... == 0 into p_i == q_j == 0;
+    // p_i == 0 and q_j > 0; and p_i > 0 and q_j == 0.
     for (std::size_t e = 0; e < M + N - 3; ++e) {
         if (system.rhs.get(e) == RHS::ZERO) {
             for (std::size_t t = 0; t < M + 1; ++t) {
@@ -191,17 +192,28 @@ static bool find_case_split(std::vector<System<M, N>> &stack,
                     assert(term.p_index);
                     assert(term.q_index);
                     stack.push_back(system);
-                    stack.back().set_q_zero(term.q_index);
+                    stack.back().set_p_positive(term.p_index);
+                    if (!stack.back().set_q_zero(term.q_index)) {
+                        stack.pop_back();
+                    }
                     stack.push_back(system);
-                    stack.back().set_p_zero(term.p_index);
+                    stack.back().set_q_positive(term.q_index);
+                    if (!stack.back().set_p_zero(term.p_index)) {
+                        stack.pop_back();
+                    }
+                    stack.push_back(system);
+                    if (!(stack.back().set_p_zero(term.p_index) &&
+                          stack.back().set_q_zero(term.q_index))) {
+                        stack.pop_back();
+                    }
                     return true;
                 }
             }
         }
     }
 
-    // Phase 3: Split p_i*q_j == 0 or 1 into
-    // p_i == 0, q_j == 0, and p_i == q_j == 1.
+    // Phase 3: Split p_i*q_j == 0 or 1 into p_i == q_j == 0;
+    // p_i == 0 and q_j > 0; p_i > 0 and q_j == 0; and p_i == q_j == 1.
     for (std::size_t e = 0; e < M + N - 3; ++e) {
         if (system.rhs.get(e) == RHS::ZERO_OR_ONE) {
             const Term term = system.find_unique_nonzero_term(e);
@@ -215,9 +227,20 @@ static bool find_case_split(std::vector<System<M, N>> &stack,
                 stack.back().set_p_one(term.p_index);
                 stack.back().set_q_one(term.q_index);
                 stack.push_back(system);
-                stack.back().set_q_zero(term.q_index);
+                stack.back().set_p_positive(term.p_index);
+                if (!stack.back().set_q_zero(term.q_index)) {
+                    stack.pop_back();
+                }
                 stack.push_back(system);
-                stack.back().set_p_zero(term.p_index);
+                stack.back().set_q_positive(term.q_index);
+                if (!stack.back().set_p_zero(term.p_index)) {
+                    stack.pop_back();
+                }
+                stack.push_back(system);
+                if (!(stack.back().set_p_zero(term.p_index) &&
+                      stack.back().set_q_zero(term.q_index))) {
+                    stack.pop_back();
+                }
                 return true;
             }
         }
@@ -246,8 +269,8 @@ static bool find_case_split(std::vector<System<M, N>> &stack,
  *     p_1*q_(N-1) == p_2*q_(N-2) == ... == p_(M-1)*q_(N-M+1) == q_(N-M) == 0
  *
  * This implies that q_M == q_(N-M) == 0, and for each 1 <= i <= M - 1,
- * p_i == 0 or q_(M-i) == q_(N-i) == 0. Using this observation, we consider
- * 2^(M-1) cases corresponding to these binary choices.
+ * p_i == 0 or p_i > 0 and q_(M-i) == q_(N-i) == 0. Using this observation,
+ * we consider 2^(M-1) cases corresponding to these binary choices.
  ******************************************************************************/
 
 
@@ -265,6 +288,7 @@ static void analyze(const std::bitset<M - 1> &case_id) {
     System<M, N> initial = initial_system();
     for (var_index_t i = 1; i <= M - 1; ++i) {
         if (case_id[i - 1]) {
+            initial.set_p_positive(i);
             initial.set_q_zero(M - i);
             initial.set_q_zero(N - i);
         } else {
