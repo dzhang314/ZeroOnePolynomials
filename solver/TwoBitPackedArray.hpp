@@ -25,7 +25,7 @@ public:
         const std::size_t byte_index = index >> 2;
         const std::byte byte = data[byte_index];
         const int shift = static_cast<int>(index & 0x03) << 1;
-        return static_cast<T>((byte & (MASK << shift)) >> shift);
+        return static_cast<T>((byte >> shift) & MASK);
     }
 
     constexpr void set(std::size_t index, T item) noexcept {
