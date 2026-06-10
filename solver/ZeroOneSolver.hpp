@@ -13,6 +13,7 @@
 #include <cstdint> // for std::uint8_t
 #include <utility> // for std::pair
 
+#include "PackedBooleanArray.hpp"
 #include "TwoBitPackedArray.hpp"
 
 namespace ZeroOneSolver {
@@ -140,6 +141,8 @@ struct System {
     TwoBitPackedArray<RHS, M + N - 3> rhs;
     TwoBitPackedArray<VAR, M - 1> p;
     TwoBitPackedArray<VAR, N - 1> q;
+    PackedBooleanArray<M - 1> p_positive;
+    PackedBooleanArray<N - 1> q_positive;
 
 
     /**************************************************************************
@@ -154,7 +157,8 @@ struct System {
         for (std::size_t e = 0; e < M + N - 3; ++e) {
             for (std::size_t t = 0; t < M + 1; ++t) { lhs[e][t] = TERM_ZERO; }
         }
-        // The arrays `rhs`, `p`, and `q` are automatically zero-initialized.
+        // The arrays `rhs`, `p`, `q`, `p_positive`, and
+        // `q_positive` are automatically zero-initialized.
 
         // Coefficient of x^d for d < M:
         for (int d = 1; d < M; ++d) {
@@ -211,9 +215,10 @@ struct System {
     }
 
 
-    constexpr void set_p_zero(var_index_t i) noexcept {
+    constexpr bool set_p_zero(var_index_t i) noexcept {
         assert((1 <= i) && (i <= M - 1));
         assert(p.get(i - 1) != VAR::ONE);
+        if (p_positive.get(i - 1)) { return false; }
         p.set(i - 1, VAR::ZERO);
         // Scan for terms containing p_i and set them to zero.
         for (std::size_t e = 0; e < M + N - 3; ++e) {
@@ -221,12 +226,14 @@ struct System {
                 if (lhs[e][t].p_index == i) { lhs[e][t] = TERM_ZERO; }
             }
         }
+        return true;
     }
 
 
-    constexpr void set_q_zero(var_index_t j) noexcept {
+    constexpr bool set_q_zero(var_index_t j) noexcept {
         assert((1 <= j) && (j <= N - 1));
         assert(q.get(j - 1) != VAR::ONE);
+        if (q_positive.get(j - 1)) { return false; }
         q.set(j - 1, VAR::ZERO);
         // Scan for terms containing q_j and set them to zero.
         for (std::size_t e = 0; e < M + N - 3; ++e) {
@@ -234,6 +241,7 @@ struct System {
                 if (lhs[e][t].q_index == j) { lhs[e][t] = TERM_ZERO; }
             }
         }
+        return true;
     }
 
 
@@ -280,6 +288,20 @@ struct System {
             return true;
         }
         return false;
+    }
+
+
+    constexpr void set_p_positive(var_index_t i) noexcept {
+        assert((1 <= i) && (i <= M - 1));
+        assert(p.get(i - 1) != VAR::ZERO);
+        p_positive.set(i - 1);
+    }
+
+
+    constexpr void set_q_positive(var_index_t j) noexcept {
+        assert((1 <= j) && (j <= N - 1));
+        assert(q.get(j - 1) != VAR::ZERO);
+        q_positive.set(j - 1);
     }
 
 
