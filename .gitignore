@@ -1,5 +1,6 @@
 /.lake/
 /solver/bin/ZeroOneSolver-*-*
 /solver/data/CanonicalEquations-*-*-*.txt
+/solver/data/CanonicalIndex-*-*-*.txt
 /solver/data/ZeroOneEquations-*-*-*.txt
 /solver/proofs/**
