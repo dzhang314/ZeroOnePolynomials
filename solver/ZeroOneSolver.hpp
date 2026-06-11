@@ -469,6 +469,7 @@ struct System {
 
     constexpr SimplifyStatus simplify_phase_2() noexcept {
         // Phase 2: Use right-hand sides to deduce values of variables.
+        SimplifyStatus result = SimplifyStatus::NO_SIMPLIFICATION;
         for (std::size_t e = 0; e < M + N - 3; ++e) {
             const RHS rhs_value = rhs.get(e);
             if (rhs_value == RHS::ZERO) {
@@ -481,21 +482,25 @@ struct System {
                     assert(term != TERM_ONE);
                     if (term == TERM_ZERO) { continue; }
                     if (term.q_index == 0) { // p_i
-                        return set_p_zero(term.p_index)
-                                   ? SimplifyStatus::FOUND_SIMPLIFICATION
-                                   : SimplifyStatus::FOUND_CONTRADICTION;
+                        if (!set_p_zero(term.p_index)) {
+                            return SimplifyStatus::FOUND_CONTRADICTION;
+                        }
+                        result = SimplifyStatus::FOUND_SIMPLIFICATION;
                     } else if (term.p_index == 0) { // q_j
-                        return set_q_zero(term.q_index)
-                                   ? SimplifyStatus::FOUND_SIMPLIFICATION
-                                   : SimplifyStatus::FOUND_CONTRADICTION;
+                        if (!set_q_zero(term.q_index)) {
+                            return SimplifyStatus::FOUND_CONTRADICTION;
+                        }
+                        result = SimplifyStatus::FOUND_SIMPLIFICATION;
                     } else if (p_positive.get(term.p_index - 1)) { // p_i > 0
-                        return set_q_zero(term.q_index)
-                                   ? SimplifyStatus::FOUND_SIMPLIFICATION
-                                   : SimplifyStatus::FOUND_CONTRADICTION;
+                        if (!set_q_zero(term.q_index)) {
+                            return SimplifyStatus::FOUND_CONTRADICTION;
+                        }
+                        result = SimplifyStatus::FOUND_SIMPLIFICATION;
                     } else if (q_positive.get(term.q_index - 1)) { // q_j > 0
-                        return set_p_zero(term.p_index)
-                                   ? SimplifyStatus::FOUND_SIMPLIFICATION
-                                   : SimplifyStatus::FOUND_CONTRADICTION;
+                        if (!set_p_zero(term.p_index)) {
+                            return SimplifyStatus::FOUND_CONTRADICTION;
+                        }
+                        result = SimplifyStatus::FOUND_SIMPLIFICATION;
                     }
                 }
             } else if (rhs_value == RHS::ONE) {
@@ -511,7 +516,7 @@ struct System {
                 }
             }
         }
-        return SimplifyStatus::NO_SIMPLIFICATION;
+        return result;
     }
 
 
