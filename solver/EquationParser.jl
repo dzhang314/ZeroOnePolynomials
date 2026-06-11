@@ -55,7 +55,7 @@ const _PLUS = UInt8('+')
 const _SPACE = UInt8(' ')
 const _NEWLINE = UInt8('\n')
 
-function load_systems(path::AbstractString) where {F}
+function load_systems(path::AbstractString)
     bytes = read(path)
     n = length(bytes)
     equation = Term[]
