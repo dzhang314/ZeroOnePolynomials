@@ -5,11 +5,12 @@
  * See the LICENSE file for full license details.
  ******************************************************************************/
 
-#include <bitset>
-#include <cassert>
-#include <cstddef>
-#include <iostream>
-#include <vector>
+#include <bitset>   // for std::bitset
+#include <cassert>  // for assert
+#include <cstddef>  // for std::size_t
+#include <cstdlib>  // for std::strtoull
+#include <iostream> // for std::ostream, std::cout, std::cerr, std::flush
+#include <vector>   // for std::vector
 
 #include "ZeroOneSolver.hpp"
 
@@ -339,9 +340,17 @@ static bool exceeds_reverse(const std::bitset<M - 1> &case_id) noexcept {
 }
 
 
-int main() {
-    std::bitset<M - 1> case_id;
+int main(int argc, char **argv) {
+    const bool bounds_supplied = (argc >= 3);
+    const unsigned long long lower_bound =
+        bounds_supplied ? std::strtoull(argv[1], nullptr, 10) : 0;
+    const unsigned long long upper_bound =
+        bounds_supplied ? std::strtoull(argv[2], nullptr, 10) : 0;
+    unsigned long long index = lower_bound;
+    std::bitset<M - 1> case_id(lower_bound);
     do {
+        if (bounds_supplied && (index >= upper_bound)) { break; }
         if (!exceeds_reverse(case_id)) { analyze(case_id); }
+        ++index;
     } while (increment(case_id));
 }

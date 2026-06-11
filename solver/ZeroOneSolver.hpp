@@ -11,7 +11,7 @@
 #include <array>   // for std::array
 #include <cassert> // for assert
 #include <cstddef> // for std::size_t
-#include <cstdint> // for std::uint8_t
+#include <cstdint> // for std::uint8_t, std::uint16_t
 #include <utility> // for std::pair
 
 #include "PackedBooleanArray.hpp"
@@ -135,6 +135,7 @@ template <var_index_t M, var_index_t N>
 constexpr std::array<std::array<Term, M + 1>, M + N - 3>
 initial_lhs() noexcept {
 
+    // Equations with fewer than `M + 1` terms are padded with zeroes.
     std::array<std::array<Term, M + 1>, M + N - 3> lhs;
     for (std::size_t e = 0; e < M + N - 3; ++e) {
         for (std::size_t t = 0; t < M + 1; ++t) { lhs[e][t] = TERM_ZERO; }
@@ -207,7 +208,6 @@ struct System {
     static_assert((1 < M) && (M < N));
 
 
-    // Equations with fewer than `M + 1` terms are padded with zeroes.
     std::array<std::array<Term, M + 1>, M + N - 3> lhs;
     TwoBitPackedArray<RHS, M + N - 3> rhs;
     TwoBitPackedArray<VAR, M - 1> p;
