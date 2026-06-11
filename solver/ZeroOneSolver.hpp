@@ -8,6 +8,7 @@
 #ifndef ZERO_ONE_SOLVER_HPP_INCLUDED
 #define ZERO_ONE_SOLVER_HPP_INCLUDED
 
+#include <array>   // for std::array
 #include <cassert> // for assert
 #include <cstddef> // for std::size_t
 #include <cstdint> // for std::uint8_t
@@ -130,6 +131,60 @@ enum class SimplifyStatus : std::uint8_t {
 }; // enum class SimplifyStatus
 
 
+template <var_index_t M, var_index_t N>
+constexpr std::array<std::array<Term, M + 1>, M + N - 3>
+initial_lhs() noexcept {
+
+    std::array<std::array<Term, M + 1>, M + N - 3> lhs;
+    for (std::size_t e = 0; e < M + N - 3; ++e) {
+        for (std::size_t t = 0; t < M + 1; ++t) { lhs[e][t] = TERM_ZERO; }
+    }
+
+    // Coefficient of x^d for d < M:
+    for (int d = 1; d < M; ++d) {
+        // p_1*q_(d-1) + p_2*q_(d-2) + ... + p_(d-1)*q_1
+        for (int i = 1; i <= d - 1; ++i) { lhs[d - 1][i - 1] = {i, d - i}; }
+        lhs[d - 1][d - 1] = {d, 0}; // p_d
+        lhs[d - 1][d] = {0, d};     // q_d
+    }
+
+    // Coefficient of x^M:
+    // p_1*q_(M-1) + p_2*q_(M-2) + ... + p_(M-1)*q_1
+    // for (int i = 1; i <= M - 1; ++i) { lhs[M - 1][i - 1] = {i, M - i}; }
+    // lhs[M - 1][M - 1] = {0, M}; // q_M
+    // lhs[M - 1][M] = TERM_ONE;   // 1
+    // This equation immediately implies q_M == 0.
+
+    // Coefficient of x^d for M < d < N:
+    for (int d = M + 1; d < N; ++d) {
+        // p_1*q_(d-1) + p_2*q_(d-2) + ... + p_(M-1)*q_(d-M+1)
+        for (int i = 1; i <= M - 1; ++i) { lhs[d - 2][i - 1] = {i, d - i}; }
+        lhs[d - 2][M - 1] = {0, d - M}; // q_(d-M)
+        lhs[d - 2][M] = {0, d};         // q_d
+    }
+
+    // Coefficient of x^N:
+    // p_1*q_(N-1) + p_2*q_(N-2) + ... + p_(M-1)*q_(N-M+1)
+    // for (int i = 1; i <= M - 1; ++i) { lhs[N - 1][i - 1] = {i, N - i}; }
+    // lhs[N - 1][M - 1] = {0, N - M}; // q_(N-M)
+    // lhs[N - 1][M] = TERM_ONE;       // 1
+    // This equation immediately implies q_(N-M) == 0.
+
+    // Coefficient of x^d for d > N:
+    for (int d = N + 1; d <= M + N - 1; ++d) {
+        const int origin = d - (N - 1);
+        // p_(d-N+1)*q_(N-1) + p_(d-N+2)*q_(N-2) + ... + p_(M-1)*q_(d-M+1)
+        for (int i = origin; i <= M - 1; ++i) {
+            lhs[d - 3][i - origin] = {i, d - i};
+        }
+        lhs[d - 3][M - origin] = {d - N, 0}; // p_(d-N)
+        lhs[d - 3][M + N - d] = {0, d - M};  // q_(d-M)
+    }
+
+    return lhs;
+}
+
+
 /******************************************************************************
  * A `System<M, N>` represents a system of M + N - 3 bilinear equations over
  * the variables {p_1, p_2, ..., p_(M-1)} and {q_1, q_2, ..., q_(N-1)} together
@@ -144,7 +199,7 @@ struct System {
 
 
     // Equations with fewer than `M + 1` terms are padded with zeroes.
-    Term lhs[M + N - 3][M + 1];
+    std::array<std::array<Term, M + 1>, M + N - 3> lhs;
     TwoBitPackedArray<RHS, M + N - 3> rhs;
     TwoBitPackedArray<VAR, M - 1> p;
     TwoBitPackedArray<VAR, N - 1> q;
@@ -159,54 +214,9 @@ struct System {
      * have degree M and N, respectively.
      **************************************************************************/
     constexpr System() noexcept {
-
-        // Initialize left-hand sides.
-        for (std::size_t e = 0; e < M + N - 3; ++e) {
-            for (std::size_t t = 0; t < M + 1; ++t) { lhs[e][t] = TERM_ZERO; }
-        }
+        lhs = initial_lhs<M, N>();
         // The arrays `rhs`, `p`, `q`, `p_positive`, and
         // `q_positive` are automatically zero-initialized.
-
-        // Coefficient of x^d for d < M:
-        for (int d = 1; d < M; ++d) {
-            // p_1*q_(d-1) + p_2*q_(d-2) + ... + p_(d-1)*q_1
-            for (int i = 1; i <= d - 1; ++i) { lhs[d - 1][i - 1] = {i, d - i}; }
-            lhs[d - 1][d - 1] = {d, 0}; // p_d
-            lhs[d - 1][d] = {0, d};     // q_d
-        }
-
-        // Coefficient of x^M:
-        // p_1*q_(M-1) + p_2*q_(M-2) + ... + p_(M-1)*q_1
-        // for (int i = 1; i <= M - 1; ++i) { lhs[M - 1][i - 1] = {i, M - i}; }
-        // lhs[M - 1][M - 1] = {0, M}; // q_M
-        // lhs[M - 1][M] = TERM_ONE;   // 1
-        // This equation immediately implies q_M == 0.
-
-        // Coefficient of x^d for M < d < N:
-        for (int d = M + 1; d < N; ++d) {
-            // p_1*q_(d-1) + p_2*q_(d-2) + ... + p_(M-1)*q_(d-M+1)
-            for (int i = 1; i <= M - 1; ++i) { lhs[d - 2][i - 1] = {i, d - i}; }
-            lhs[d - 2][M - 1] = {0, d - M}; // q_(d-M)
-            lhs[d - 2][M] = {0, d};         // q_d
-        }
-
-        // Coefficient of x^N:
-        // p_1*q_(N-1) + p_2*q_(N-2) + ... + p_(M-1)*q_(N-M+1)
-        // for (int i = 1; i <= M - 1; ++i) { lhs[N - 1][i - 1] = {i, N - i}; }
-        // lhs[N - 1][M - 1] = {0, N - M}; // q_(N-M)
-        // lhs[N - 1][M] = TERM_ONE;       // 1
-        // This equation immediately implies q_(N-M) == 0.
-
-        // Coefficient of x^d for d > N:
-        for (int d = N + 1; d <= M + N - 1; ++d) {
-            const int origin = d - (N - 1);
-            // p_(d-N+1)*q_(N-1) + p_(d-N+2)*q_(N-2) + ... + p_(M-1)*q_(d-M+1)
-            for (int i = origin; i <= M - 1; ++i) {
-                lhs[d - 3][i - origin] = {i, d - i};
-            }
-            lhs[d - 3][M - origin] = {d - N, 0}; // p_(d-N)
-            lhs[d - 3][M + N - d] = {0, d - M};  // q_(d-M)
-        }
     }
 
 
