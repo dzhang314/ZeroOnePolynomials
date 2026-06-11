@@ -270,7 +270,8 @@ static bool find_case_split(std::vector<System<M, N>> &stack,
  *
  * This implies that q_M == q_(N-M) == 0, and for each 1 <= i <= M - 1,
  * p_i == 0 or p_i > 0 and q_(M-i) == q_(N-i) == 0. Using this observation,
- * we consider 2^(M-1) cases corresponding to these binary choices.
+ * we consider 2^(M-1) cases corresponding to these binary choices, indexed
+ * by a string of M - 1 bits that we call a case ID.
  ******************************************************************************/
 
 
@@ -322,7 +323,25 @@ static bool increment(std::bitset<M - 1> &bitset) noexcept {
 }
 
 
+/******************************************************************************
+ * A case ID and its reverse generate isomorphic systems of equations, since
+ * reversing the case ID reverses the coefficients of P and Q (the leading
+ * term becomes the constant term and vice versa). To eliminate redundancy, we
+ * only consider case IDs that do not lexicographically exceed their reverse.
+ ******************************************************************************/
+static bool exceeds_reverse(const std::bitset<M - 1> &case_id) noexcept {
+    for (std::size_t i = 0; i < M - 1; ++i) {
+        const bool a = case_id[i];
+        const bool b = case_id[M - 2 - i];
+        if (a != b) { return b; }
+    }
+    return false;
+}
+
+
 int main() {
     std::bitset<M - 1> case_id;
-    do { analyze(case_id); } while (increment(case_id));
+    do {
+        if (!exceeds_reverse(case_id)) { analyze(case_id); }
+    } while (increment(case_id));
 }
