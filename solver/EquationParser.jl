@@ -1,49 +1,6 @@
 module EquationParser
 
-export print_canonical_system, load_pq_systems, load_canonical_systems
-
-
-const Term = Tuple{Int,Int}
-const Equation = Vector{Term}
-const System = Vector{Equation}
-
-
-function print_canonical_term(io::IO, i::Int, j::Int)
-    print(io, 'x')
-    print(io, i)
-    if !iszero(j)
-        print(io, "*x")
-        print(io, j)
-    end
-    return nothing
-end
-
-
-function print_canonical_equation(io::IO, equation::Equation)
-    if isempty(equation)
-        print(io, '0')
-    else
-        first_term = true
-        for (i, j) in equation
-            if first_term
-                first_term = false
-            else
-                print(io, " + ")
-            end
-            print_canonical_term(io, i, j)
-        end
-    end
-    return nothing
-end
-
-
-function print_canonical_system(io::IO, system::System)
-    for equation in system
-        print_canonical_equation(io, equation)
-        print(io, '\n')
-    end
-    return nothing
-end
+export load_systems
 
 
 const _ZERO = UInt8('0')
@@ -68,7 +25,7 @@ const _P = UInt8('p')
 const _Q = UInt8('q')
 const _STAR = UInt8('*')
 
-@inline function parse_pq_term(bytes::Vector{UInt8}, i::Int)
+@inline function parse_term(bytes::Vector{UInt8}, i::Int)
     n = length(bytes)
     @inbounds begin
         head = bytes[i]
@@ -90,29 +47,15 @@ const _STAR = UInt8('*')
 end
 
 
-const _X = UInt8('x')
-
-@inline function parse_canonical_term(bytes::Vector{UInt8}, i::Int)
-    n = length(bytes)
-    @inbounds begin
-        @assert bytes[i] == _X
-        x, i = parse_int(bytes, i + 1)
-        if (i < n) && (bytes[i] == _STAR)
-            @assert bytes[i+1] == _X
-            y, i = parse_int(bytes, i + 2)
-            return ((x, y), i)
-        else
-            return ((x, 0), i)
-        end
-    end
-end
-
+const Term = Tuple{Int,Int}
+const Equation = Vector{Term}
+const System = Vector{Equation}
 
 const _PLUS = UInt8('+')
 const _SPACE = UInt8(' ')
 const _NEWLINE = UInt8('\n')
 
-function load_systems(parse_term::F, path::AbstractString) where {F}
+function load_systems(path::AbstractString) where {F}
     bytes = read(path)
     n = length(bytes)
     equation = Term[]
@@ -142,11 +85,6 @@ function load_systems(parse_term::F, path::AbstractString) where {F}
     @assert isempty(system)
     return result
 end
-
-load_pq_systems(path::AbstractString) = load_systems(parse_pq_term, path)
-
-load_canonical_systems(path::AbstractString) =
-    load_systems(parse_canonical_term, path)
 
 
 end # module EquationParser
