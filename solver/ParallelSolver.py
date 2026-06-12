@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 import os
-import subprocess
 from collections.abc import Iterator
 from itertools import count
-from time import sleep
-from sys import argv
+from time import perf_counter, sleep
+from shutil import copyfileobj
+from subprocess import Popen, run
+from sys import argv, stderr
 
 
 def get_num_cores() -> int:
@@ -13,7 +14,7 @@ def get_num_cores() -> int:
     Return the number of logical CPU cores in the machine executing this
     program (or a reasonable guess, 8, if this information is not available.)
     """
-    result = os.cpu_count()
+    result: int | None = os.cpu_count()
     return 8 if result is None else result
 
 
@@ -49,110 +50,163 @@ def degree_pair_iterator(d: int) -> Iterator[tuple[int, int]]:
     # so we only need to consider m == 5 and m >= 7.
     for m in range(5, (d + 1) >> 1):
         if m == 5 or m >= 7:
-            n = d - m
+            n: int = d - m
             yield (m, n)
 
 
-def max_degree_pair_iterator(d: int | None) -> Iterator[tuple[int, int]]:
-    """
-    Given an integer d, return an iterator over all pairs
-    of integers (m, n) such that 0 < m < n and m + n <= d.
-
-    The pairs are returned in increasing order of m + n. If d is None,
-    it is treated as infinity, and an infinite iterator is returned.
-    """
-    for i in count() if d is None else range(d + 1):
-        yield from degree_pair_iterator(i)
-
-
 def executable_path(m: int, n: int) -> str:
-    return f"bin/ZeroOneSolver-{m+n:04}-{m:04}-{n:04}"
+    return os.path.join("bin", f"ZeroOneSolver-{m+n:04}-{m:04}-{n:04}")
 
 
 def data_file_path(m: int, n: int) -> str:
-    return f"data/ZeroOneEquations-{m+n:04}-{m:04}-{n:04}.txt"
+    return os.path.join("data", f"ZeroOneEquations-{m+n:04}-{m:04}-{n:04}.txt")
 
 
-def compile(m: int, n: int, output_path: str):
-    if os.path.isfile(output_path):
-        os.remove(output_path)
-    _ = subprocess.run(
+def chunk_file_path(m: int, n: int, chunk_index: int) -> str:
+    return os.path.join(
+        "data", f"ZeroOneEquations-{m+n:04}-{m:04}-{n:04}.{chunk_index+1:08}.txt"
+    )
+
+
+def compile_zero_one_solver(m: int, n: int, optimize: bool) -> None:
+    exe_path: str = executable_path(m, n)
+    if os.path.isfile(exe_path):
+        print("Recompiling", executable_path(m, n) + "...", flush=True)
+        os.remove(exe_path)
+    else:
+        print("Compiling", executable_path(m, n) + "...", flush=True)
+    compile_command: list[str] = [
+        GCC_EXECUTABLE,
+        "-Wall",
+        "-Wextra",
+        "-pedantic",
+        "-std=c++20",
+    ]
+    if optimize:
+        compile_command.extend(
+            [
+                "-O3",
+                "-march=native",
+                "-fwhole-program",
+            ]
+        )
+    compile_command.extend(
         [
-            GCC_EXECUTABLE,
-            "-Wall",
-            "-Wextra",
-            "-pedantic",
-            "-std=c++20",
-            "-O3",
-            "-march=native",
-            "-fwhole-program",
             "-DZERO_ONE_SOLVER_M=" + str(m),
             "-DZERO_ONE_SOLVER_N=" + str(n),
             "ZeroOneSolver.cpp",
             "-o",
-            output_path,
-        ],
-        check=True,
+            exe_path,
+        ]
     )
-    assert os.path.isfile(output_path) or os.path.isfile(output_path + ".exe")
+    _ = run(compile_command, check=True)
+    assert os.path.isfile(exe_path) or os.path.isfile(exe_path + ".exe")
+
+
+CHUNK_SIZE: int = 1 << 16
 
 
 def wait_for_process_to_finish(
-    processes: list[tuple[subprocess.Popen[bytes], str, str, str]],
-):
+    processes: list[tuple[Popen[bytes], tuple[int, int, int]]],
+) -> None:
     while True:
         for k in range(len(processes)):
-            proc, exe, src, dst = processes[k]
-            return_code = proc.poll()
+            process, (m, n, chunk_index) = processes[k]
+            return_code: int | None = process.poll()
             if return_code is not None:
-                if os.path.isfile(exe):
-                    os.remove(exe)
-                if os.path.isfile(exe + ".exe"):  # Windows compatibility
-                    os.remove(exe + ".exe")
-                if proc.stdout is not None:
-                    proc.stdout.close()
+                if process.stdout is not None:
+                    process.stdout.close()
                 if return_code == 0:
-                    print("Finished computing", dst + ".")
-                    os.rename(src, dst)
+                    print(f"Finished computing chunk {chunk_index+1:08}.", flush=True)
+                    chunk_path: str = chunk_file_path(m, n, chunk_index)
+                    os.rename(chunk_path + ".temp", chunk_path)
                 else:
-                    print("ERROR: Process", dst, "returned nonzero exit code.")
-                    os.replace(src, dst + ".failed")
+                    lower_bound: int = chunk_index * CHUNK_SIZE
+                    upper_bound: int = (chunk_index + 1) * CHUNK_SIZE
+                    print(
+                        "ERROR:",
+                        executable_path(m, n),
+                        lower_bound,
+                        upper_bound,
+                        "produced nonzero return code:",
+                        return_code,
+                        file=stderr,
+                        flush=True,
+                    )
                 del processes[k]
-                return None
+                return
         sleep(0.001)
 
 
-def main():
+def run_zero_one_solver(m: int, n: int, num_processes: int) -> None:
+    exe_path: str = executable_path(m, n)
+    assert os.path.isfile(exe_path)
+    num_items: int = 1 << (m - 1)
+    num_chunks: int = max(1, num_items // CHUNK_SIZE)
+    processes: list[tuple[Popen[bytes], tuple[int, int, int]]] = []
+    for chunk_index in range(num_chunks):
+        chunk_path: str = chunk_file_path(m, n, chunk_index)
+        if os.path.isfile(chunk_path):
+            print(chunk_path, "already exists.", flush=True)
+            continue
+        lower_bound: int = chunk_index * CHUNK_SIZE
+        upper_bound: int = (chunk_index + 1) * CHUNK_SIZE
+        print(f"Computing chunk {chunk_index+1:8} of {num_chunks:8}...", flush=True)
+        processes.append(
+            (
+                Popen(
+                    [exe_path, str(lower_bound), str(upper_bound)],
+                    stdout=open(chunk_path + ".temp", "w"),
+                ),
+                (m, n, chunk_index),
+            )
+        )
+        while len(processes) >= num_processes:
+            wait_for_process_to_finish(processes)
+    while processes:
+        wait_for_process_to_finish(processes)
+    os.remove(exe_path)
+
+
+def merge_chunk_files(m: int, n: int) -> None:
+    data_path: str = data_file_path(m, n)
+    assert not os.path.isfile(data_path)
+    num_items: int = 1 << (m - 1)
+    num_chunks: int = max(1, num_items // CHUNK_SIZE)
+    with open(data_path, "w") as data_file:
+        for chunk_index in range(num_chunks):
+            chunk_path = chunk_file_path(m, n, chunk_index)
+            assert os.path.isfile(chunk_path)
+            with open(chunk_path) as chunk_file:
+                copyfileobj(chunk_file, data_file)
+            os.remove(chunk_path)
+
+
+def main() -> None:
     if not os.path.isdir("bin"):
         os.mkdir("bin")
     if not os.path.isdir("data"):
         os.mkdir("data")
-
-    num_processes = int(argv[1]) if len(argv) > 1 else NUM_CORES - 1
-    print("Running", num_processes, "parallel processes.")
-
-    processes: list[tuple[subprocess.Popen[bytes], str, str, str]] = []
-    for m, n in max_degree_pair_iterator(int(argv[2]) if len(argv) > 2 else None):
-        data_path = data_file_path(m, n)
-        if os.path.isfile(data_path):
-            print(data_path, "already computed.")
-        else:
-            while len(processes) >= num_processes:
-                wait_for_process_to_finish(processes)
-            exe_path = executable_path(m, n)
-            compile(m, n, exe_path)
-            temp_path = data_path + ".temp"
-            print("Computing", data_path + ".")
-            processes.append(
-                (
-                    subprocess.Popen([exe_path], stdout=open(temp_path, "w")),
-                    exe_path,
-                    temp_path,
-                    data_path,
-                )
-            )
-    while processes:
-        wait_for_process_to_finish(processes)
+    num_processes: int = int(argv[1]) if len(argv) > 1 else NUM_CORES
+    print("Running", num_processes, "parallel processes.", flush=True)
+    optimize = False
+    for d in count():
+        for m, n in degree_pair_iterator(d):
+            data_path = data_file_path(m, n)
+            if os.path.isfile(data_path):
+                print(data_path, "already computed.", flush=True)
+                continue
+            compile_start: float = perf_counter()
+            compile_zero_one_solver(m, n, optimize)
+            compile_time: float = perf_counter() - compile_start
+            print("Compiled in", compile_time, "seconds.", flush=True)
+            solve_start: float = perf_counter()
+            run_zero_one_solver(m, n, num_processes)
+            solve_time: float = perf_counter() - solve_start
+            print("Computed in", solve_time, "seconds.", flush=True)
+            merge_chunk_files(m, n)
+            if solve_time >= compile_time:
+                optimize = True
 
 
 if __name__ == "__main__":
