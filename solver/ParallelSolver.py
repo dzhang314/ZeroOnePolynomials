@@ -75,30 +75,12 @@ def compile_zero_one_solver(m: int, n: int, optimize: bool) -> None:
         os.remove(exe_path)
     else:
         print("Compiling", executable_path(m, n) + "...", flush=True)
-    compile_command: list[str] = [
-        GCC_EXECUTABLE,
-        "-Wall",
-        "-Wextra",
-        "-pedantic",
-        "-std=c++20",
-    ]
+    compile_command: list[str] = [GCC_EXECUTABLE, "-std=c++20"]
     if optimize:
-        compile_command.extend(
-            [
-                "-O3",
-                "-march=native",
-                "-fwhole-program",
-            ]
-        )
-    compile_command.extend(
-        [
-            "-DZERO_ONE_SOLVER_M=" + str(m),
-            "-DZERO_ONE_SOLVER_N=" + str(n),
-            "ZeroOneSolver.cpp",
-            "-o",
-            exe_path,
-        ]
-    )
+        compile_command.extend(["-O3", "-march=native", "-fwhole-program"])
+    compile_command.append("-DZERO_ONE_SOLVER_M=" + str(m))
+    compile_command.append("-DZERO_ONE_SOLVER_N=" + str(n))
+    compile_command.extend(["ZeroOneSolver.cpp", "-o", exe_path])
     _ = run(compile_command, check=True)
     assert os.path.isfile(exe_path) or os.path.isfile(exe_path + ".exe")
 
@@ -199,11 +181,11 @@ def main() -> None:
             compile_start: float = perf_counter()
             compile_zero_one_solver(m, n, optimize)
             compile_time: float = perf_counter() - compile_start
-            print("Compiled in", compile_time, "seconds.", flush=True)
+            print(f"Compiled in {compile_time:.3f} seconds.", flush=True)
             solve_start: float = perf_counter()
             run_zero_one_solver(m, n, num_processes)
             solve_time: float = perf_counter() - solve_start
-            print("Computed in", solve_time, "seconds.", flush=True)
+            print(f"Computed in {solve_time:.3f} seconds.", flush=True)
             merge_chunk_files(m, n)
             if solve_time >= compile_time:
                 optimize = True
