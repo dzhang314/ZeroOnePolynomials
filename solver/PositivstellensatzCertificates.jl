@@ -5,277 +5,25 @@ using FLINT_jll: libflint
 using HiGHS_jll: libhighs
 using SparseArrays: SparseMatrixCSC, SparseVector
 
-############################################################## MONOMIAL INDEXING
+####################################################### EQUATION DATA STRUCTURES
 
 
-@inline sort_tuple(i::Int, j::Int) = minmax(i, j)
-
-@inline function sort_tuple(i::Int, j::Int, k::Int)
-    i, k = minmax(i, k)
-    i, j = minmax(i, j)
-    j, k = minmax(j, k)
-    return (i, j, k)
-end
-
-
-@inline sorted_monomial_index(::Int) = 0
-
-@inline sorted_monomial_index(::Int, i::Int) = i
-
-@inline sorted_monomial_index(n::Int, i::Int, j::Int) =
-    iszero(i) ? sorted_monomial_index(n, j) :
-    n + div((2 * n - i + 2) * (i - 1), 2) + (j - i + 1)
-
-@inline sorted_monomial_index(n::Int, i::Int, j::Int, k::Int) =
-    iszero(i) ? sorted_monomial_index(n, j, k) :
-    n + div((n + 1) * n, 2) +
-    div((n + 2) * (n + 1) * n -
-        (n - i + 3) * (n - i + 2) * (n - i + 1), 6) +
-    div((2 * n - i - j + 3) * (j - i), 2) + (k - j + 1)
-
-
-@inline monomial_index(n::Int) = sorted_monomial_index(n)
-
-@inline monomial_index(n::Int, i::Int) = sorted_monomial_index(n, i)
-
-@inline function monomial_index(n::Int, i::Int, j::Int)
-    i, j = sort_tuple(i, j)
-    return sorted_monomial_index(n, i, j)
-end
-
-@inline function monomial_index(n::Int, i::Int, j::Int, k::Int)
-    i, j, k = sort_tuple(i, j, k)
-    return sorted_monomial_index(n, i, j, k)
-end
-
-
-################################################################# BOX GENERATORS
-
-
-function build_box_product(
-    terms::Dict{NTuple{N,Int},Int},
-    i::Int,
-    n::Int,
-) where {N}
-    if i > n
-        result = copy(terms)
-        for ((z, j...), c) in terms
-            @assert iszero(z)
-            key = sort_tuple(i - n, j...)
-            result[key] = get(result, key, 0) - c
-        end
-        return result
-    else
-        result = Dict{NTuple{N,Int},Int}()
-        for ((z, j...), c) in terms
-            @assert iszero(z)
-            key = sort_tuple(i, j...)
-            result[key] = c
-        end
-        return result
-    end
-end
-
-
-function construct_quadratic_box_generators(n::Int)
-    num_columns = div((2 * n + 1) * (2 * n), 2)
-    num_entries = div((3 * n + 1) * (3 * n), 2)
-    a_start = Cint[]
-    a_index = Cint[]
-    a_value = Cdouble[]
-    sizehint!(a_start, num_columns + 1)
-    sizehint!(a_index, num_entries)
-    sizehint!(a_value, num_entries)
-    push!(a_start, zero(Cint))
-    box_product = Dict{Tuple{Int,Int},Int}()
-    box_product[(0, 0)] = 1
-    for i = 1:2*n
-        box_product_i = build_box_product(box_product, i, n)
-        for j = i:2*n
-            box_product_ij = build_box_product(box_product_i, j, n)
-            for ((x, y), c) in box_product_ij
-                push!(a_index, sorted_monomial_index(n, x, y))
-                push!(a_value, -c)
-            end
-            push!(a_start, length(a_index))
-        end
-    end
-    @assert length(a_start) == num_columns + 1
-    @assert length(a_index) == num_entries
-    @assert length(a_value) == num_entries
-    return (a_start, a_index, a_value)
-end
-
-
-function construct_cubic_box_generators(n::Int)
-    num_columns = div((2 * n + 2) * (2 * n + 1) * (2 * n), 6)
-    num_entries = div((3 * n + 2) * (3 * n + 1) * (3 * n), 6)
-    a_start = Cint[]
-    a_index = Cint[]
-    a_value = Cdouble[]
-    sizehint!(a_start, num_columns + 1)
-    sizehint!(a_index, num_entries)
-    sizehint!(a_value, num_entries)
-    push!(a_start, zero(Cint))
-    box_product = Dict{Tuple{Int,Int,Int},Int}()
-    box_product[(0, 0, 0)] = 1
-    for i = 1:2*n
-        box_product_i = build_box_product(box_product, i, n)
-        for j = i:2*n
-            box_product_ij = build_box_product(box_product_i, j, n)
-            for k = j:2*n
-                box_product_ijk = build_box_product(box_product_ij, k, n)
-                for ((x, y, z), c) in box_product_ijk
-                    push!(a_index, sorted_monomial_index(n, x, y, z))
-                    push!(a_value, -c)
-                end
-                push!(a_start, length(a_index))
-            end
-        end
-    end
-    @assert length(a_start) == num_columns + 1
-    @assert length(a_index) == num_entries
-    @assert length(a_value) == num_entries
-    return (a_start, a_index, a_value)
-end
-
-
-############################################################### IDEAL GENERATORS
-
-
-const Equation = Vector{Tuple{Int,Int}}
+const Term = Tuple{Int,Int}
+const Equation = Vector{Term}
 const System = Vector{Equation}
 
 
-function add_ideal_generators_linear!(
-    a_start::Vector{Cint},
-    a_index::Vector{Cint},
-    a_value::Vector{Cdouble},
-    equation::Equation,
-    n::Int,
-    j::Int...,
-)
-    _one = one(Cdouble)
-    for (i, _) in equation
-        push!(a_index, monomial_index(n, i, j...))
-        push!(a_value, +_one)
-    end
-    push!(a_index, monomial_index(n, j...))
-    push!(a_value, -_one)
-    push!(a_start, length(a_index))
-    for (i, _) in equation
-        push!(a_index, monomial_index(n, i, j...))
-        push!(a_value, -_one)
-    end
-    push!(a_index, monomial_index(n, j...))
-    push!(a_value, +_one)
-    push!(a_start, length(a_index))
-    return (a_start, a_index, a_value)
-end
+p_indices(system::System) = collect(BitSet(
+    p for equation in system for (p, q) in equation if !iszero(p)))
 
-
-function add_ideal_generators_quadratic!(
-    a_start::Vector{Cint},
-    a_index::Vector{Cint},
-    a_value::Vector{Cdouble},
-    equation::Equation,
-    n::Int,
-    k::Int...,
-)
-    _one = one(Cdouble)
-    for (i, j) in equation
-        push!(a_index, monomial_index(n, i, j, k...))
-        push!(a_value, +_one)
-    end
-    push!(a_index, monomial_index(n, k...))
-    push!(a_value, -_one)
-    push!(a_start, length(a_index))
-    for (i, j) in equation
-        push!(a_index, monomial_index(n, i, j, k...))
-        push!(a_value, -_one)
-    end
-    push!(a_index, monomial_index(n, k...))
-    push!(a_value, +_one)
-    push!(a_start, length(a_index))
-    return (a_start, a_index, a_value)
-end
-
-
-const QUADRATIC_LOCK = ReentrantLock()
-
-const CUBIC_LOCK = ReentrantLock()
-
-const QUADRATIC_CACHE =
-    Dict{Int,Tuple{Vector{Cint},Vector{Cint},Vector{Cdouble}}}()
-
-const CUBIC_CACHE =
-    Dict{Int,Tuple{Vector{Cint},Vector{Cint},Vector{Cdouble}}}()
-
-
-function construct_quadratic_constraint_matrix(system::System)
-    n = maximum(max(i, j) for equation in system for (i, j) in equation)
-    cache_result = lock(QUADRATIC_LOCK) do
-        return get!(QUADRATIC_CACHE, n) do
-            return construct_quadratic_box_generators(n)
-        end
-    end
-    a_start, a_index, a_value = copy.(cache_result)
-    for equation in system
-        if all(iszero(j) for (i, j) in equation)
-            add_ideal_generators_linear!(
-                a_start, a_index, a_value, equation, n)
-            for j = 1:n
-                add_ideal_generators_linear!(
-                    a_start, a_index, a_value, equation, n, j)
-            end
-        else
-            add_ideal_generators_quadratic!(
-                a_start, a_index, a_value, equation, n)
-        end
-    end
-    return (a_start, a_index, a_value)
-end
-
-
-function construct_cubic_constraint_matrix(system::System)
-    n = maximum(max(i, j) for equation in system for (i, j) in equation)
-    cache_result = lock(CUBIC_LOCK) do
-        return get!(CUBIC_CACHE, n) do
-            return construct_cubic_box_generators(n)
-        end
-    end
-    a_start, a_index, a_value = copy.(cache_result)
-    for equation in system
-        if all(iszero(j) for (i, j) in equation)
-            add_ideal_generators_linear!(
-                a_start, a_index, a_value, equation, n)
-            for j = 1:n
-                add_ideal_generators_linear!(
-                    a_start, a_index, a_value, equation, n, j)
-            end
-            for j = 1:n
-                for k = j:n
-                    add_ideal_generators_linear!(
-                        a_start, a_index, a_value, equation, n, j, k)
-                end
-            end
-        else
-            add_ideal_generators_quadratic!(
-                a_start, a_index, a_value, equation, n)
-            for k = 1:n
-                add_ideal_generators_quadratic!(
-                    a_start, a_index, a_value, equation, n, k)
-            end
-        end
-    end
-    return (a_start, a_index, a_value)
-end
+q_indices(system::System) = collect(BitSet(
+    q for equation in system for (p, q) in equation if !iszero(q)))
 
 
 ############################################################## LP DATA STRUCTURE
 
 
-export LinearProgram, construct_linear_program
+export LinearProgram
 
 
 struct LinearProgram
@@ -286,27 +34,126 @@ struct LinearProgram
 end
 
 
-function construct_linear_program(system::System, problem::Symbol)
-    n = maximum(max(i, j) for equation in system for (i, j) in equation)
-    num_rows = nothing
-    constraint_matrix = nothing
-    if problem == :quadratic
-        num_rows = div((n + 2) * (n + 1), 2)
-        constraint_matrix = construct_quadratic_constraint_matrix(system)
-    elseif problem == :cubic
-        num_rows = div((n + 3) * (n + 2) * (n + 1), 6)
-        constraint_matrix = construct_cubic_constraint_matrix(system)
-    else
-        @assert false
+################################################################ LP CONSTRUCTION
+
+
+export construct_linear_program
+
+
+function construct_monomials(n::Int, d::Int)
+    result = [Int[]]
+    i = 1
+    while i <= length(result)
+        monomial = result[i]
+        if length(monomial) < d
+            k = isempty(monomial) ? 1 : monomial[end]
+            for j = k:n
+                push!(result, push!(copy(monomial), j))
+            end
+        end
+        i += 1
     end
-    a_start, a_index, a_value = constraint_matrix
+    return result
+end
+
+
+insert_sorted(v::AbstractVector{T}, x::T) where {T} =
+    insert!(copy(v), searchsortedlast(v, x) + 1, x)
+
+
+function construct_box_product(indices::Vector{Int}, n::Int)
+    result = Dict{Vector{Int},Int}(Int[] => 1)
+    for i in indices
+        next = Dict{Vector{Int},Int}()
+        for (m, c) in result
+            if i > n
+                next[m] = get(next, m, 0) + c
+                mi = insert_sorted(m, i - n)
+                next[mi] = get(next, mi, 0) - c
+            else
+                mi = insert_sorted(m, i)
+                next[mi] = get(next, mi, 0) + c
+            end
+        end
+        result = next
+    end
+    return result
+end
+
+
+function construct_constraint_matrix(system::System, d::Int)
+    ps = p_indices(system)
+    qs = q_indices(system)
+    np = length(ps)
+    nq = length(qs)
+    all_monomials = construct_monomials(np, d + 1)
+    row_index = Dict{Vector{Int},Int}(
+        m => (nq + 1) * (i - 1) for (i, m) in enumerate(all_monomials))
+    num_rows = (nq + 1) * length(all_monomials)
+    a_start = Cint[]
+    a_index = Cint[]
+    a_value = Cdouble[]
+    push!(a_start, length(a_index))
+    for indices in construct_monomials(2 * np, d + 1)
+        box_product = construct_box_product(indices, np)
+        if !isempty(indices)
+            for (m, c) in box_product
+                push!(a_index, row_index[m])
+                push!(a_value, -c)
+            end
+            push!(a_start, length(a_index))
+        end
+        if length(indices) <= d
+            for j = 1:nq
+                for (m, c) in box_product
+                    push!(a_index, row_index[m] + j)
+                    push!(a_value, -c)
+                end
+                push!(a_start, length(a_index))
+                for (m, c) in box_product
+                    push!(a_index, row_index[m])
+                    push!(a_value, -c)
+                    push!(a_index, row_index[m] + j)
+                    push!(a_value, +c)
+                end
+                push!(a_start, length(a_index))
+            end
+        end
+    end
+    p_map = Dict{Int,Int}(p => i for (i, p) in enumerate(ps))
+    q_map = Dict{Int,Int}(q => i for (i, q) in enumerate(qs))
+    _one = one(Cdouble)
+    cofactor_monomials = construct_monomials(np, d)
+    for equation in system
+        for m in cofactor_monomials
+            row_indices = Int[]
+            for (p, q) in equation
+                mp = iszero(p) ? m : insert_sorted(m, p_map[p])
+                push!(row_indices, row_index[mp] + (iszero(q) ? 0 : q_map[q]))
+            end
+            push!(row_indices, row_index[m])
+            append!(a_index, row_indices)
+            append!(a_value, +_one for _ = 1:length(row_indices)-1)
+            push!(a_value, -_one)
+            push!(a_start, length(a_index))
+            append!(a_index, row_indices)
+            append!(a_value, -_one for _ = 1:length(row_indices)-1)
+            push!(a_value, +_one)
+            push!(a_start, length(a_index))
+        end
+    end
+    return (num_rows, a_start, a_index, a_value)
+end
+
+
+function construct_linear_program(system::System, d::Int)
+    num_rows, a_start, a_index, a_value =
+        construct_constraint_matrix(system, d)
     @assert iszero(a_start[begin])
     @assert a_start[end] == length(a_index)
     @assert issorted(a_start) && allunique(a_start)
+    @assert all(0 <= row_index < num_rows for row_index in a_index)
     @assert length(a_index) == length(a_value)
-    for row_index in a_index
-        @assert 0 <= row_index < num_rows
-    end
     b = zeros(Cdouble, num_rows)
     b[begin] = one(Cdouble)
     return LinearProgram(a_start, a_index, a_value, b)
@@ -547,7 +394,7 @@ end
 ######################################################### CERTIFICATE EXTRACTION
 
 
-export print_quadratic_certificate, print_cubic_certificate
+export print_certificate
 
 
 function print_rational(io::IO, x::Rational{BigInt})
@@ -562,31 +409,43 @@ function print_rational(io::IO, x::Rational{BigInt})
 end
 
 
-function print_box_term(io::IO, c::Rational{BigInt}, n::Int, i::Int...)
+function print_box_term(
+    io::IO,
+    c::Rational{BigInt},
+    indices::Vector{Int},
+    ps::Vector{Int},
+    q::Int=0,
+)
     @assert !signbit(c)
+    @assert !isempty(indices)
     if !isone(c)
         print_rational(io, c)
         print(io, '*')
     end
-    for j in Base.front(i)
-        if j > n
-            print(io, "(1-x")
-            print(io, j - n)
-            print(io, ")*")
+    n = length(ps)
+    first_factor = true
+    for i in indices
+        if first_factor
+            first_factor = false
         else
-            print(io, 'x')
-            print(io, j)
             print(io, '*')
         end
+        if i > n
+            print(io, "(1-p")
+            print(io, ps[i-n])
+            print(io, ')')
+        else
+            print(io, 'p')
+            print(io, ps[i])
+        end
     end
-    j = last(i)
-    if j > n
-        print(io, "(1-x")
-        print(io, j - n)
+    if q < 0
+        print(io, "*(1-q")
+        print(io, -q)
         print(io, ')')
-    else
-        print(io, 'x')
-        print(io, j)
+    elseif q > 0
+        print(io, "*q")
+        print(io, q)
     end
     return nothing
 end
@@ -595,11 +454,11 @@ end
 function push_paired_term!(
     terms::Vector{String},
     solution::Dict{Int,Rational{BigInt}},
-    index::Int,
-    i::Int...,
+    solution_index::Int,
+    p_indices::Vector{Int},
 )
-    entry_pos = get(solution, index + 0, nothing)
-    entry_neg = get(solution, index + 1, nothing)
+    entry_pos = get(solution, solution_index + 0, nothing)
+    entry_neg = get(solution, solution_index + 1, nothing)
     if isnothing(entry_pos) & isnothing(entry_neg)
         return terms
     end
@@ -608,22 +467,22 @@ function push_paired_term!(
             entry_pos - entry_neg
     @assert !iszero(entry)
     term_buffer = IOBuffer()
-    if isempty(i)
+    if isempty(p_indices)
         print_rational(term_buffer, entry)
     elseif isone(entry)
-        print(term_buffer, 'x')
+        print(term_buffer, 'p')
     elseif isone(-entry)
-        print(term_buffer, "-x")
+        print(term_buffer, "-p")
     else
         print_rational(term_buffer, entry)
-        print(term_buffer, "*x")
+        print(term_buffer, "*p")
     end
-    if !isempty(i)
-        for j in Base.front(i)
-            print(term_buffer, j)
-            print(term_buffer, "*x")
+    if !isempty(p_indices)
+        for i = 1:length(p_indices)-1
+            print(term_buffer, p_indices[i])
+            print(term_buffer, "*p")
         end
-        print(term_buffer, last(i))
+        print(term_buffer, p_indices[end])
     end
     push!(terms, String(take!(term_buffer)))
     return terms
@@ -635,13 +494,13 @@ function print_polynomial(io::IO, terms::Vector{String})
         print(io, '0')
     else
         print(io, terms[1])
-        for term in view(terms, 2:length(terms))
-            if startswith(term, '-')
+        for i = 2:length(terms)
+            if startswith(terms[i], '-')
                 print(io, " - ")
-                print(io, term[2:end])
+                print(io, terms[i][2:end])
             else
                 print(io, " + ")
-                print(io, term)
+                print(io, terms[i])
             end
         end
     end
@@ -649,93 +508,52 @@ function print_polynomial(io::IO, terms::Vector{String})
 end
 
 
-function print_quadratic_certificate(
+function print_certificate(
     io::IO,
     system::System,
+    d::Int,
     indices::Vector{Int},
     entries::Vector{Rational{BigInt}},
 )
-    n = maximum(max(i, j) for equation in system for (i, j) in equation)
+    ps = p_indices(system)
+    qs = q_indices(system)
+    np = length(ps)
+    nq = length(qs)
     solution = Dict{Int,Rational{BigInt}}(indices .=> entries)
     index = 1
     box_buffer = IOBuffer()
-    for i = 1:2*n
-        for j = i:2*n
+    for indices in construct_monomials(2 * np, d + 1)
+        if !isempty(indices)
             entry = get(solution, index, nothing)
             if !isnothing(entry)
-                print_box_term(box_buffer, entry, n, i, j)
+                print_box_term(box_buffer, entry, indices, ps)
                 print(box_buffer, '\n')
             end
             index += 1
         end
-    end
-    for equation in system
-        cofactor = String[]
-        if all(iszero(j) for (i, j) in equation)
-            push_paired_term!(cofactor, solution, index)
-            index += 2
-            for j = 1:n
-                push_paired_term!(cofactor, solution, index, j)
-                index += 2
-            end
-        else
-            push_paired_term!(cofactor, solution, index)
-            index += 2
-        end
-        print_polynomial(io, cofactor)
-        print(io, '\n')
-    end
-    @assert all(<(index), indices)
-    print(io, '\n')
-    write(io, take!(box_buffer))
-    return nothing
-end
-
-
-function print_cubic_certificate(
-    io::IO,
-    system::System,
-    indices::Vector{Int},
-    entries::Vector{Rational{BigInt}},
-)
-    n = maximum(max(i, j) for equation in system for (i, j) in equation)
-    solution = Dict{Int,Rational{BigInt}}(indices .=> entries)
-    index = 1
-    box_buffer = IOBuffer()
-    for i = 1:2*n
-        for j = i:2*n
-            for k = j:2*n
+        if length(indices) <= d
+            for j = 1:nq
                 entry = get(solution, index, nothing)
                 if !isnothing(entry)
-                    print_box_term(box_buffer, entry, n, i, j, k)
+                    print_box_term(box_buffer, entry, indices, ps, +qs[j])
+                    print(box_buffer, '\n')
+                end
+                index += 1
+                entry = get(solution, index, nothing)
+                if !isnothing(entry)
+                    print_box_term(box_buffer, entry, indices, ps, -qs[j])
                     print(box_buffer, '\n')
                 end
                 index += 1
             end
         end
     end
-    for equation in system
+    cofactor_monomials = construct_monomials(np, d)
+    for _ in system
         cofactor = String[]
-        if all(iszero(j) for (i, j) in equation)
-            push_paired_term!(cofactor, solution, index)
+        for m in cofactor_monomials
+            push_paired_term!(cofactor, solution, index, ps[m])
             index += 2
-            for j = 1:n
-                push_paired_term!(cofactor, solution, index, j)
-                index += 2
-            end
-            for j = 1:n
-                for k = j:n
-                    push_paired_term!(cofactor, solution, index, j, k)
-                    index += 2
-                end
-            end
-        else
-            push_paired_term!(cofactor, solution, index)
-            index += 2
-            for k = 1:n
-                push_paired_term!(cofactor, solution, index, k)
-                index += 2
-            end
         end
         print_polynomial(io, cofactor)
         print(io, '\n')
