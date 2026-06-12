@@ -61,9 +61,9 @@ insert_sorted(v::AbstractVector{T}, x::T) where {T} =
     insert!(copy(v), searchsortedlast(v, x) + 1, x)
 
 
-function construct_box_product(indices::Vector{Int}, n::Int)
+function construct_box_product(box_indices::Vector{Int}, n::Int)
     result = Dict{Vector{Int},Int}(Int[] => 1)
-    for i in indices
+    for i in box_indices
         next = Dict{Vector{Int},Int}()
         for (m, c) in result
             if i > n
@@ -94,16 +94,16 @@ function construct_constraint_matrix(system::System, d::Int)
     a_index = Cint[]
     a_value = Cdouble[]
     push!(a_start, length(a_index))
-    for indices in construct_monomials(2 * np, d + 1)
-        box_product = construct_box_product(indices, np)
-        if !isempty(indices)
+    for box_indices in construct_monomials(2 * np, d + 1)
+        box_product = construct_box_product(box_indices, np)
+        if !isempty(box_indices)
             for (m, c) in box_product
                 push!(a_index, row_index[m])
                 push!(a_value, -c)
             end
             push!(a_start, length(a_index))
         end
-        if length(indices) <= d
+        if length(box_indices) <= d
             for j = 1:nq
                 for (m, c) in box_product
                     push!(a_index, row_index[m] + j)
@@ -412,19 +412,18 @@ end
 function print_box_term(
     io::IO,
     c::Rational{BigInt},
-    indices::Vector{Int},
+    box_indices::Vector{Int},
     ps::Vector{Int},
     q::Int=0,
 )
     @assert !signbit(c)
-    @assert !isempty(indices)
+    first_factor = true
     if !isone(c)
+        first_factor = false
         print_rational(io, c)
-        print(io, '*')
     end
     n = length(ps)
-    first_factor = true
-    for i in indices
+    for i in box_indices
         if first_factor
             first_factor = false
         else
@@ -439,13 +438,18 @@ function print_box_term(
             print(io, ps[i])
         end
     end
-    if q < 0
-        print(io, "*(1-q")
-        print(io, -q)
-        print(io, ')')
-    elseif q > 0
-        print(io, "*q")
-        print(io, q)
+    if !iszero(q)
+        if !first_factor
+            print(io, '*')
+        end
+        if signbit(q)
+            print(io, "(1-q")
+            print(io, -q)
+            print(io, ')')
+        else
+            print(io, 'q')
+            print(io, q)
+        end
     end
     return nothing
 end
@@ -522,26 +526,26 @@ function print_certificate(
     solution = Dict{Int,Rational{BigInt}}(indices .=> entries)
     index = 1
     box_buffer = IOBuffer()
-    for indices in construct_monomials(2 * np, d + 1)
-        if !isempty(indices)
+    for box_indices in construct_monomials(2 * np, d + 1)
+        if !isempty(box_indices)
             entry = get(solution, index, nothing)
             if !isnothing(entry)
-                print_box_term(box_buffer, entry, indices, ps)
+                print_box_term(box_buffer, entry, box_indices, ps)
                 print(box_buffer, '\n')
             end
             index += 1
         end
-        if length(indices) <= d
+        if length(box_indices) <= d
             for j = 1:nq
                 entry = get(solution, index, nothing)
                 if !isnothing(entry)
-                    print_box_term(box_buffer, entry, indices, ps, +qs[j])
+                    print_box_term(box_buffer, entry, box_indices, ps, +qs[j])
                     print(box_buffer, '\n')
                 end
                 index += 1
                 entry = get(solution, index, nothing)
                 if !isnothing(entry)
-                    print_box_term(box_buffer, entry, indices, ps, -qs[j])
+                    print_box_term(box_buffer, entry, box_indices, ps, -qs[j])
                     print(box_buffer, '\n')
                 end
                 index += 1
