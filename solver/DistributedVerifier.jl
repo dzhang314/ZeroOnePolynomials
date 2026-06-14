@@ -39,8 +39,8 @@ using .EquationParser: print_system, load_systems
 end
 
 
-const WorkItem = Tuple{String,System}
-const WorkerResult = Tuple{Int,Symbol,String,Union{
+@everywhere const WorkItem = Tuple{String,System}
+@everywhere const WorkerResult = Tuple{Int,Symbol,String,Union{
     Nothing,String,Tuple{Int,Vector{Int},Vector{Rational{BigInt}}}}}
 
 
@@ -108,14 +108,13 @@ function producer_loop!(
                 @assert !(digest in seen)
                 push!(seen, digest)
                 key = bytes2hex(h)
-                if proof_exists(key, str)
-                    println(stdout, "Proof $key already exists.")
-                    flush(stdout)
-                else
+                if !proof_exists(key, str)
                     pending[key] = system
                     put!(queue, (key, system))
                 end
             end
+            println("Finished issuing work for: ", (d, m, n))
+            flush(stdout)
         end
     end
     return nothing
@@ -160,10 +159,8 @@ end
 function main()
     seen = Set{NTuple{32,UInt8}}()
     pending = Dict{String,System}()
-    queue = RemoteChannel{Channel{WorkItem}}(
-        () -> Channel{WorkItem}(4 * nworkers()))
-    results = RemoteChannel{Channel{WorkerResult}}(
-        () -> Channel{WorkerResult}(4 * nworkers()))
+    queue = RemoteChannel(() -> Channel{WorkItem}(4 * nworkers()))
+    results = RemoteChannel(() -> Channel{WorkerResult}(4 * nworkers()))
     producer = @async try
         producer_loop!(seen, pending, queue)
     finally
