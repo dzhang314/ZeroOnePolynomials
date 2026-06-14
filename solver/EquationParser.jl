@@ -103,36 +103,54 @@ const _PLUS = UInt8('+')
 const _SPACE = UInt8(' ')
 const _NEWLINE = UInt8('\n')
 
-function load_systems(path::AbstractString)
-    bytes = read(path)
-    n = length(bytes)
+const _BLOCK_SIZE = 1 << 20
+
+function parse_systems!(io::IO, channel::Channel{System})
+    block = Vector{UInt8}(undef, _BLOCK_SIZE)
+    bytes = UInt8[]
     equation = Term[]
     system = Equation[]
-    result = System[]
-    i = 1
-    @inbounds while i <= n
-        b = bytes[i]
-        if (b == _PLUS) | (b == _SPACE)
-            i += 1
-        elseif b == _NEWLINE
-            if isempty(equation)
-                push!(result, system)
-                system = Equation[]
+    while true
+        num_bytes = readbytes!(io, block, _BLOCK_SIZE)
+        append!(bytes, view(block, 1:num_bytes))
+        done = eof(io)
+        n = done ? length(bytes) : something(findlast(==(_NEWLINE), bytes), 0)
+        i = 1
+        @inbounds while i <= n
+            b = bytes[i]
+            if (b == _PLUS) | (b == _SPACE)
                 i += 1
+            elseif b == _NEWLINE
+                if isempty(equation)
+                    put!(channel, system)
+                    system = Equation[]
+                    i += 1
+                else
+                    push!(system, equation)
+                    equation = Term[]
+                    i += 1
+                end
             else
-                push!(system, equation)
-                equation = Term[]
-                i += 1
+                term, i = parse_term(bytes, i)
+                push!(equation, term)
             end
-        else
-            term, i = parse_term(bytes, i)
-            push!(equation, term)
+        end
+        deleteat!(bytes, 1:n)
+        if done
+            break
         end
     end
+    @assert isempty(bytes)
     @assert isempty(equation)
     @assert isempty(system)
-    return result
+    return nothing
 end
+
+
+const _CHANNEL_SIZE = 1 << 10
+
+load_systems(path::AbstractString) = Channel{System}(channel ->
+        open(io -> parse_systems!(io, channel), path), _CHANNEL_SIZE)
 
 
 end # module EquationParser
