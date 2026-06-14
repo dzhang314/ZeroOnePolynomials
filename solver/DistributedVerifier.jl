@@ -160,7 +160,6 @@ end
 function main()
     seen = Set{NTuple{32,UInt8}}()
     pending = Dict{String,System}()
-    systems = Dict{String,System}()
     queue = RemoteChannel{Channel{WorkItem}}(
         () -> Channel{WorkItem}(4 * nworkers()))
     results = RemoteChannel{Channel{WorkerResult}}(
@@ -181,7 +180,7 @@ function main()
             @assert isnothing(result)
             println(stdout, "Worker $id started $key.")
             flush(stdout)
-            write_stub(key, systems[key])
+            write_stub(key, pending[key])
         elseif status == :done
             if isnothing(result)
                 println(stderr, "Worker $id failed to prove $key.")
@@ -191,7 +190,7 @@ function main()
             else
                 println(stdout, "Worker $id proved $key.")
                 flush(stdout)
-                write_proof(key, systems[key], result...)
+                write_proof(key, pending[key], result...)
                 delete!(pending, key)
             end
         elseif status == :error
