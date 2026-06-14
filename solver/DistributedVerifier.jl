@@ -44,7 +44,10 @@ const WorkerResult = Tuple{Int,Symbol,String,Union{
     Nothing,String,Tuple{Int,Vector{Int},Vector{Rational{BigInt}}}}}
 
 
-@everywhere function worker_loop(queue::RemoteChannel, results::RemoteChannel)
+@everywhere function worker_loop!(
+    queue::RemoteChannel{Channel{WorkItem}},
+    results::RemoteChannel{Channel{WorkerResult}},
+)
     for (key, system) in queue
         put!(results, (myid(), :start, key, nothing))
         try
@@ -82,7 +85,14 @@ function proof_exists(key::String, str::String)
 end
 
 
-function producer_loop(systems::Dict{String,System}, queue::RemoteChannel)
+@inline to_digest(h::Vector{UInt8}) = ntuple(i -> @inbounds(h[i]), Val{32}())
+
+
+function producer_loop!(
+    seen::Set{NTuple{32,UInt8}},
+    pending::Dict{String,System},
+    queue::RemoteChannel{Channel{WorkItem}},
+)
     for d = 0:typemax(Int)
         for (m, n) in degree_pairs(d)
             input_path = data_file_path(d, m, n)
@@ -93,13 +103,16 @@ function producer_loop(systems::Dict{String,System}, queue::RemoteChannel)
             end
             for system in load_systems(input_path)
                 str = sprint(print_system, system)
-                key = bytes2hex(sha256(str))
-                @assert !haskey(systems, key)
-                systems[key] = system
+                h = sha256(str)
+                digest = to_digest(h)
+                @assert !(digest in seen)
+                push!(seen, digest)
+                key = bytes2hex(h)
                 if proof_exists(key, str)
                     println(stdout, "Proof $key already exists.")
                     flush(stdout)
                 else
+                    pending[key] = system
                     put!(queue, (key, system))
                 end
             end
@@ -145,15 +158,19 @@ end
 
 
 function main()
+    seen = Set{NTuple{32,UInt8}}()
+    pending = Dict{String,System}()
     systems = Dict{String,System}()
-    queue = RemoteChannel(() -> Channel{WorkItem}(256 * nworkers()))
-    results = RemoteChannel(() -> Channel{WorkerResult}(256 * nworkers()))
+    queue = RemoteChannel{Channel{WorkItem}}(
+        () -> Channel{WorkItem}(4 * nworkers()))
+    results = RemoteChannel{Channel{WorkerResult}}(
+        () -> Channel{WorkerResult}(4 * nworkers()))
     producer = @async try
-        producer_loop(systems, queue)
+        producer_loop!(seen, pending, queue)
     finally
         close(queue)
     end
-    futures = map(id -> remotecall(worker_loop, id, queue, results), workers())
+    futures = map(id -> remotecall(worker_loop!, id, queue, results), workers())
     consumer = @async try
         foreach(wait, futures)
     finally
@@ -170,16 +187,19 @@ function main()
                 println(stderr, "Worker $id failed to prove $key.")
                 flush(stderr)
                 mark_failed(key)
+                delete!(pending, key)
             else
                 println(stdout, "Worker $id proved $key.")
                 flush(stdout)
                 write_proof(key, systems[key], result...)
+                delete!(pending, key)
             end
         elseif status == :error
             println(stderr, "Worker $id threw error while proving $key.")
             println(stderr, result)
             flush(stderr)
             mark_failed(key)
+            delete!(pending, key)
         else
             @assert false
         end
