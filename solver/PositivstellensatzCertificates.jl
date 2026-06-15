@@ -1,6 +1,6 @@
 module PositivstellensatzCertificates
 
-using Clp_jll: libClp
+# using Clp_jll: libClp
 using FLINT_jll: libflint
 using HiGHS_jll: libhighs
 using SparseArrays: SparseMatrixCSC, SparseVector
@@ -163,7 +163,7 @@ end
 ############################################################ LP SOLVER INTERFACE
 
 
-export solve_highs, solve_clp
+export solve_highs # solve_clp
 
 
 function l0_cost(lp::LinearProgram)
@@ -230,37 +230,37 @@ function solve_highs(lp::LinearProgram)
 end
 
 
-function solve_clp(lp::LinearProgram)
-    num_columns = length(lp.a_start) - 1
-    num_rows = length(lp.b)
-    weights = l0_cost(lp)
-    instance = ccall((:Clp_newModel, libClp), Ptr{Cvoid}, ())
-    try
-        ccall((:Clp_setLogLevel, libClp),
-            Cvoid, (Ptr{Cvoid}, Cint), instance, zero(Cint))
-        ccall((:Clp_loadProblem, libClp),
-            Cvoid, (Ptr{Cvoid}, Cint, Cint,
-                Ptr{Cint}, Ptr{Cint}, Ptr{Cdouble},
-                Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble},
-                Ptr{Cdouble}, Ptr{Cdouble}),
-            instance, num_columns, num_rows,
-            lp.a_start, lp.a_index, lp.a_value,
-            C_NULL, C_NULL, weights, lp.b, lp.b)
-        status = ccall((:Clp_initialSolve, libClp),
-            Cint, (Ptr{Cvoid},), instance)
-        if !iszero(status)
-            return nothing
-        end
-        ptr = ccall((:Clp_getColSolution, libClp),
-            Ptr{Cdouble}, (Ptr{Cvoid},), instance)
-        @assert ptr != C_NULL
-        result = Vector{Cdouble}(undef, num_columns)
-        unsafe_copyto!(pointer(result), ptr, num_columns)
-        return result
-    finally
-        ccall((:Clp_deleteModel, libClp), Cvoid, (Ptr{Cvoid},), instance)
-    end
-end
+# function solve_clp(lp::LinearProgram)
+#     num_columns = length(lp.a_start) - 1
+#     num_rows = length(lp.b)
+#     weights = l0_cost(lp)
+#     instance = ccall((:Clp_newModel, libClp), Ptr{Cvoid}, ())
+#     try
+#         ccall((:Clp_setLogLevel, libClp),
+#             Cvoid, (Ptr{Cvoid}, Cint), instance, zero(Cint))
+#         ccall((:Clp_loadProblem, libClp),
+#             Cvoid, (Ptr{Cvoid}, Cint, Cint,
+#                 Ptr{Cint}, Ptr{Cint}, Ptr{Cdouble},
+#                 Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble},
+#                 Ptr{Cdouble}, Ptr{Cdouble}),
+#             instance, num_columns, num_rows,
+#             lp.a_start, lp.a_index, lp.a_value,
+#             C_NULL, C_NULL, weights, lp.b, lp.b)
+#         status = ccall((:Clp_initialSolve, libClp),
+#             Cint, (Ptr{Cvoid},), instance)
+#         if !iszero(status)
+#             return nothing
+#         end
+#         ptr = ccall((:Clp_getColSolution, libClp),
+#             Ptr{Cdouble}, (Ptr{Cvoid},), instance)
+#         @assert ptr != C_NULL
+#         result = Vector{Cdouble}(undef, num_columns)
+#         unsafe_copyto!(pointer(result), ptr, num_columns)
+#         return result
+#     finally
+#         ccall((:Clp_deleteModel, libClp), Cvoid, (Ptr{Cvoid},), instance)
+#     end
+# end
 
 
 ################################################################# FLINT MATRICES
