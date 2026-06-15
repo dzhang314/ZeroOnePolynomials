@@ -1,6 +1,6 @@
 module EquationParser
 
-export print_system, load_systems
+export print_system, parse_system
 
 
 const Term = Tuple{Int,Int}
@@ -56,17 +56,16 @@ end
 
 
 const _ZERO = UInt8('0')
-const _NINE = UInt8('9')
 
-@inline function parse_int(bytes::Vector{UInt8}, i::Int)
-    n = length(bytes)
+@inline function parse_int(bytes::AbstractVector{UInt8}, i::Int)
+    n = lastindex(bytes)
     result = 0
     @inbounds while i <= n
-        b = bytes[i]
-        if !((b >= _ZERO) & (b <= _NINE))
+        digit = bytes[i] - _ZERO
+        if digit >= 10
             break
         end
-        result = muladd(10, result, Int(b - _ZERO))
+        result = muladd(10, result, Int(digit))
         i += 1
     end
     return (result, i)
@@ -77,22 +76,22 @@ const _P = UInt8('p')
 const _Q = UInt8('q')
 const _STAR = UInt8('*')
 
-@inline function parse_term(bytes::Vector{UInt8}, i::Int)
-    n = length(bytes)
+@inline function parse_term(bytes::AbstractVector{UInt8}, i::Int)
+    n = lastindex(bytes)
     @inbounds begin
         head = bytes[i]
         if head == _P
             p, i = parse_int(bytes, i + 1)
-            if (i < n) && (bytes[i] == _STAR)
-                @assert bytes[i+1] == _Q
-                q, i = parse_int(bytes, i + 2)
+            if (i <= n) && (bytes[i] == _STAR)
+                @assert (i < n) && (bytes[i+1] == _Q)
+                q, i = parse_int(bytes, i + 2) # skip "*q"
                 return ((p, q), i)
             else
                 return ((p, 0), i)
             end
         else
             @assert head == _Q
-            q, i = parse_int(bytes, i + 1)
+            q, i = parse_int(bytes, i + 1) # skip 'q'
             return ((0, q), i)
         end
     end
@@ -103,54 +102,38 @@ const _PLUS = UInt8('+')
 const _SPACE = UInt8(' ')
 const _NEWLINE = UInt8('\n')
 
-const _BLOCK_SIZE = 1 << 20
-
-function parse_systems!(io::IO, channel::Channel{System})
-    block = Vector{UInt8}(undef, _BLOCK_SIZE)
-    bytes = UInt8[]
-    equation = Term[]
-    system = Equation[]
-    while true
-        num_bytes = readbytes!(io, block, _BLOCK_SIZE)
-        append!(bytes, view(block, 1:num_bytes))
-        done = eof(io)
-        n = done ? length(bytes) : something(findlast(==(_NEWLINE), bytes), 0)
-        i = 1
-        @inbounds while i <= n
-            b = bytes[i]
-            if (b == _PLUS) | (b == _SPACE)
-                i += 1
-            elseif b == _NEWLINE
-                if isempty(equation)
-                    put!(channel, system)
-                    system = Equation[]
-                    i += 1
-                else
-                    push!(system, equation)
-                    equation = Term[]
-                    i += 1
-                end
-            else
-                term, i = parse_term(bytes, i)
-                push!(equation, term)
-            end
-        end
-        deleteat!(bytes, 1:n)
-        if done
-            break
+function parse_equation(bytes::AbstractVector{UInt8}, i::Int)
+    n = lastindex(bytes)
+    result = Term[]
+    @inbounds while i <= n
+        b = bytes[i]
+        if b == _NEWLINE
+            return (result, i + 1)
+        elseif (b == _PLUS) | (b == _SPACE)
+            i += 1
+        else
+            term, i = parse_term(bytes, i)
+            push!(result, term)
         end
     end
-    @assert isempty(bytes)
-    @assert isempty(equation)
-    @assert isempty(system)
-    return nothing
+    throw(ArgumentError("equation must be terminated by '\\n'"))
 end
 
 
-const _CHANNEL_SIZE = 1 << 10
-
-load_systems(path::AbstractString) = Channel{System}(channel ->
-        open(io -> parse_systems!(io, channel), path), _CHANNEL_SIZE)
+function parse_system(bytes::AbstractVector{UInt8}, i::Int)
+    n = lastindex(bytes)
+    result = Equation[]
+    @inbounds while i <= n
+        b = bytes[i]
+        if b == _NEWLINE
+            return (result, i + 1)
+        else
+            equation, i = parse_equation(bytes, i)
+            push!(result, equation)
+        end
+    end
+    throw(ArgumentError("system must be terminated by a blank line"))
+end
 
 
 end # module EquationParser
