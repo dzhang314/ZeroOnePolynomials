@@ -163,6 +163,72 @@ function parse_system(bytes::AbstractVector{UInt8}, i::Int)
 end
 
 
+############################################################# MODULAR ARITHMETIC
+
+
+export ModM61
+
+
+const M61 = (one(UInt64) << 61) - one(UInt64)
+
+
+struct ModM61
+
+    value::UInt64
+
+    @inline function ModM61(x::UInt64)
+        r = (x & M61) + (x >> 61)
+        return new(ifelse(r >= M61, r - M61, r))
+    end
+
+    @inline global unsafe_m61(x::UInt64) = new(x)
+
+end
+
+
+@inline function Base.:+(x::ModM61, y::ModM61)
+    s = x.value + y.value
+    return unsafe_m61(ifelse(s >= M61, s - M61, s))
+end
+
+
+@inline function Base.:-(x::ModM61, y::ModM61)
+    d = x.value - y.value
+    return unsafe_m61(ifelse(x.value < y.value, d + M61, d))
+end
+
+
+@inline function Base.:*(x::ModM61, y::ModM61)
+    p = widemul(x.value, y.value)
+    lo = (p % UInt64) & M61
+    hi = (p >> 61) % UInt64
+    return unsafe_m61(lo) + unsafe_m61(hi)
+end
+
+
+@inline pow_pow2(x::T, ::Val{0}) where {T} = x
+@inline pow_pow2(x::T, ::Val{N}) where {T,N} = pow_pow2(x * x, Val{N - 1}())
+
+
+@inline function Base.inv(x::ModM61)
+    x2 = x * x
+    x3 = x2 * x
+    x4 = x2 * x2
+    x7 = x4 * x3
+    x11 = x7 * x4
+    x22 = x11 * x11
+    x29 = x22 * x7
+    x58 = x29 * x29
+    x116 = x58 * x58
+    x127 = x116 * x11
+    x16383 = pow_pow2(x127, Val{7}()) * x127
+    u = pow_pow2(x16383, Val{5}()) # x^(2^19 - 32)
+    v = pow_pow2(u, Val{14}()) * u # x^(2^33 - 32)
+    w = pow_pow2(v, Val{28}()) * v # x^(2^61 - 32)
+    return w * x29                 # x^(2^61 - 3)
+end
+
+
 ################################################################################
 
 end # module EquationParser
