@@ -57,19 +57,31 @@ end
 
 const _ZERO = UInt8('0')
 
-@inline function parse_int(bytes::AbstractVector{UInt8}, i::Int)
+@inline function parse_integer(
+    ::Type{T},
+    fold_digit::F,
+    bytes::AbstractVector{UInt8},
+    i::Int,
+) where {F,T}
     n = lastindex(bytes)
-    result = 0
+    result = zero(T)
     @inbounds while i <= n
         digit = bytes[i] - _ZERO
         if digit >= 10
             break
         end
-        result = muladd(10, result, Int(digit))
+        result = fold_digit(result, digit)
         i += 1
     end
     return (result, i)
 end
+
+
+@inline fold_digit_int(accumulator::Int, digit::UInt8) =
+    muladd(10, accumulator, Int(digit))
+
+@inline parse_int(bytes::AbstractVector{UInt8}, i::Int) =
+    parse_integer(Int, fold_digit_int, bytes, i)
 
 
 const _P = UInt8('p')
