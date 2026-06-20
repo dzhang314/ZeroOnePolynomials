@@ -181,9 +181,18 @@ struct ModM61
         return new(ifelse(r >= M61, r - M61, r))
     end
 
-    @inline global unsafe_m61(x::UInt64) = new(x)
+    global unsafe_m61(x::UInt64) = new(x)
 
 end
+
+
+@inline ModM61(x::UInt8) = unsafe_m61(UInt64(x))
+
+
+@inline Base.zero(::Type{ModM61}) = unsafe_m61(zero(UInt64))
+@inline Base.one(::Type{ModM61}) = unsafe_m61(one(UInt64))
+@inline Base.iszero(x::ModM61) = iszero(x.value)
+@inline Base.isone(x::ModM61) = isone(x.value)
 
 
 @inline function Base.:+(x::ModM61, y::ModM61)
@@ -226,6 +235,61 @@ end
     v = pow_pow2(u, Val{14}()) * u # x^(2^33 - 32)
     w = pow_pow2(v, Val{28}()) * v # x^(2^61 - 32)
     return w * x29                 # x^(2^61 - 3)
+end
+
+
+################################################################ MODULAR VECTORS
+
+
+export VecM61
+
+
+struct VecM61{N}
+    values::NTuple{N,ModM61}
+end
+
+
+@inline VecM61{N}(x::ModM61) where {N} = VecM61(ntuple(_ -> x, Val{N}()))
+
+
+@inline Base.zero(::Type{VecM61{N}}) where {N} =
+    VecM61(ntuple(_ -> zero(ModM61), Val{N}()))
+@inline Base.one(::Type{VecM61{N}}) where {N} =
+    VecM61(ntuple(_ -> one(ModM61), Val{N}()))
+@inline Base.iszero(v::VecM61) = all(iszero, v.values)
+@inline Base.isone(v::VecM61) = all(isone, v.values)
+
+
+@inline Base.:+(x::VecM61{N}, y::VecM61{N}) where {N} =
+    VecM61(ntuple(i -> x.values[i] + y.values[i], Val{N}()))
+@inline Base.:-(x::VecM61{N}, y::VecM61{N}) where {N} =
+    VecM61(ntuple(i -> x.values[i] - y.values[i], Val{N}()))
+@inline Base.:*(x::VecM61{N}, y::VecM61{N}) where {N} =
+    VecM61(ntuple(i -> x.values[i] * y.values[i], Val{N}()))
+
+
+################################################################ MODULAR PARSING
+
+
+export parse_m61
+
+
+const TEN_M61 = ModM61(UInt64(10))
+
+@inline fold_digit_m61(accumulator::ModM61, digit::UInt8) =
+    muladd(TEN_M61, accumulator, ModM61(digit))
+
+
+const _SLASH = UInt8('/')
+
+@inline function parse_m61(bytes::Vector{UInt8}, i::Int)
+    n = lastindex(bytes)
+    num, i = parse_integer(ModM61, fold_digit_m61, bytes, i)
+    @inbounds if (i <= n) && (bytes[i] == _SLASH)
+        den, i = parse_integer(ModM61, fold_digit_m61, bytes, i + 1)
+        return (num * inv(den), i)
+    end
+    return (num, i)
 end
 
 
