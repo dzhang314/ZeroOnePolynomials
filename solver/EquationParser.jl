@@ -1,11 +1,17 @@
 module EquationParser
 
-export print_system, parse_system
+##################################################################### DATA TYPES
 
 
 const Term = Tuple{Int,Int}
 const Equation = Vector{Term}
 const System = Vector{Equation}
+
+
+####################################################################### PRINTING
+
+
+export print_system
 
 
 function print_term(io::IO, p::Int, q::Int)
@@ -55,6 +61,9 @@ function print_system(io::IO, system::System)
 end
 
 
+################################################################ NUMERIC PARSING
+
+
 const _ZERO = UInt8('0')
 
 @inline function parse_integer(
@@ -82,6 +91,12 @@ end
 
 @inline parse_int(bytes::AbstractVector{UInt8}, i::Int) =
     parse_integer(Int, fold_digit_int, bytes, i)
+
+
+############################################################### SYMBOLIC PARSING
+
+
+export parse_system
 
 
 const _P = UInt8('p')
@@ -147,5 +162,7 @@ function parse_system(bytes::AbstractVector{UInt8}, i::Int)
     throw(ArgumentError("system must be terminated by a blank line"))
 end
 
+
+################################################################################
 
 end # module EquationParser
