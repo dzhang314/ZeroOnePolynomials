@@ -1,5 +1,7 @@
 module EquationParser
 
+using Base.Checked: checked_add, checked_mul
+
 ##################################################################### DATA TYPES
 
 
@@ -64,6 +66,9 @@ end
 ################################################################ NUMERIC PARSING
 
 
+export parse_int, parse_int128_checked, parse_rational
+
+
 const _ZERO = UInt8('0')
 
 @inline function parse_integer(
@@ -91,6 +96,43 @@ end
 
 @inline parse_int(bytes::AbstractVector{UInt8}, i::Int) =
     parse_integer(Int, fold_digit_int, bytes, i)
+
+
+const TEN_INT128 = Int128(10)
+
+@inline fold_digit_int128_checked(accumulator::Int128, digit::UInt8) =
+    checked_add(checked_mul(TEN_INT128, accumulator), Int128(digit))
+
+@inline parse_int128_checked(bytes::Vector{UInt8}, i::Int) =
+    parse_integer(Int128, fold_digit_int128_checked, bytes, i)
+
+
+function parse_bigint(bytes::Vector{UInt8}, i::Int)
+    n = lastindex(bytes)
+    j = i
+    @inbounds while j <= n
+        digit = bytes[j] - _ZERO
+        if digit >= 10
+            break
+        end
+        j += 1
+    end
+    result = parse(BigInt, String(view(bytes, i:(j-1))))
+    return (result, j)
+end
+
+
+const _SLASH = UInt8('/')
+
+function parse_rational(bytes::Vector{UInt8}, i::Int)
+    n = lastindex(bytes)
+    num, i = parse_bigint(bytes, i)
+    @inbounds if (i <= n) && (bytes[i] == _SLASH)
+        den, i = parse_bigint(bytes, i + 1)
+        return (Rational{BigInt}(num, den), i)
+    end
+    return (Rational{BigInt}(num), i)
+end
 
 
 ############################################################### SYMBOLIC PARSING
@@ -279,8 +321,6 @@ const TEN_M61 = ModM61(UInt64(10))
 @inline fold_digit_m61(accumulator::ModM61, digit::UInt8) =
     muladd(TEN_M61, accumulator, ModM61(digit))
 
-
-const _SLASH = UInt8('/')
 
 @inline function parse_m61(bytes::Vector{UInt8}, i::Int)
     n = lastindex(bytes)
