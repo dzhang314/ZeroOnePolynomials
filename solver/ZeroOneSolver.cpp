@@ -341,16 +341,15 @@ static bool exceeds_reverse(const std::bitset<M - 1> &case_id) noexcept {
 
 
 int main(int argc, char **argv) {
-    const bool bounds_supplied = (argc >= 3);
-    const unsigned long long lower_bound =
-        bounds_supplied ? std::strtoull(argv[1], nullptr, 10) : 0;
-    const unsigned long long upper_bound =
-        bounds_supplied ? std::strtoull(argv[2], nullptr, 10) : 0;
-    unsigned long long index = lower_bound;
-    std::bitset<M - 1> case_id(lower_bound);
+    const bool range_supplied = (argc >= 3);
+    unsigned long long remaining_cases =
+        range_supplied ? std::strtoull(argv[2], nullptr, 10) : 0;
+    std::bitset<M - 1> case_id(range_supplied ? argv[1] : "");
     do {
-        if (bounds_supplied && (index >= upper_bound)) { break; }
+        if (range_supplied) {
+            if (remaining_cases == 0) { break; }
+            --remaining_cases;
+        }
         if (!exceeds_reverse(case_id)) { analyze(case_id); }
-        ++index;
     } while (increment(case_id));
 }

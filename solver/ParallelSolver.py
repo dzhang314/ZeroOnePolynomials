@@ -132,12 +132,11 @@ def run_zero_one_solver(m: int, n: int, num_processes: int) -> None:
             print(chunk_path, "already exists.", flush=True)
             continue
         lower_bound: int = chunk_index * CHUNK_SIZE
-        upper_bound: int = (chunk_index + 1) * CHUNK_SIZE
         print(f"Computing chunk {chunk_index+1:8} of {num_chunks:8}...", flush=True)
         processes.append(
             (
                 Popen(
-                    [exe_path, str(lower_bound), str(upper_bound)],
+                    [exe_path, f"{lower_bound:b}", str(CHUNK_SIZE)],
                     stdout=open(chunk_path + ".temp", "w"),
                 ),
                 (m, n, chunk_index),
