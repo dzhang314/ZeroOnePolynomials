@@ -132,7 +132,7 @@ enum class SimplifyStatus : std::uint8_t {
 
 
 template <var_index_t M, var_index_t N>
-constexpr std::array<std::array<Term, M + 1>, M + N - 3>
+consteval std::array<std::array<Term, M + 1>, M + N - 3>
 initial_lhs() noexcept {
 
     // Equations with fewer than `M + 1` terms are padded with zeroes.
@@ -195,6 +195,49 @@ initial_lhs() noexcept {
 }
 
 
+enum class Factor { P, Q };
+
+
+struct TermPosition {
+    std::uint16_t equation_index;
+    std::uint16_t term_index;
+};
+
+
+template <var_index_t M, var_index_t N, Factor FACTOR>
+struct OccurrenceTable {
+
+    static constexpr std::size_t VAR_COUNT =
+        (FACTOR == Factor::P) ? M - 1 : N - 1;
+    static constexpr std::size_t CAPACITY =
+        (FACTOR == Factor::P) ? N - 1 : M + 1;
+
+    std::array<std::array<TermPosition, CAPACITY>, VAR_COUNT> positions;
+    std::array<std::uint8_t, VAR_COUNT> counts;
+
+    consteval OccurrenceTable() noexcept
+        : positions{}
+        , counts{} {
+        constexpr auto lhs = initial_lhs<M, N>();
+        for (std::size_t e = 0; e < M + N - 3; ++e) {
+            for (std::size_t t = 0; t < M + 1; ++t) {
+                const Term term = lhs[e][t];
+                const var_index_t i =
+                    (FACTOR == Factor::P) ? term.p_index : term.q_index;
+                if ((i != 0x00) && (i != 0xFF)) {
+                    assert(counts[i - 1] < CAPACITY);
+                    positions[i - 1][counts[i - 1]++] = {
+                        static_cast<std::uint16_t>(e),
+                        static_cast<std::uint16_t>(t),
+                    };
+                }
+            }
+        }
+    }
+
+}; // struct OccurrenceTable
+
+
 /******************************************************************************
  * A `System<M, N>` represents a system of M + N - 3 bilinear equations over
  * the variables {p_1, p_2, ..., p_(M-1)} and {q_1, q_2, ..., q_(N-1)} together
@@ -208,6 +251,8 @@ struct System {
     static_assert((1 < M) && (M < N));
 
 
+    static constexpr OccurrenceTable<M, N, Factor::P> P_TABLE{};
+    static constexpr OccurrenceTable<M, N, Factor::Q> Q_TABLE{};
     std::array<std::array<Term, M + 1>, M + N - 3> lhs;
     TwoBitPackedArray<RHS, M + N - 3> rhs;
     TwoBitPackedArray<VAR, M - 1> p;
@@ -222,7 +267,7 @@ struct System {
      * constrains one coefficient of the product P(x) * Q(x), where P and Q
      * have degree M and N, respectively.
      **************************************************************************/
-    constexpr System() noexcept {
+    consteval System() noexcept {
         lhs = initial_lhs<M, N>();
         // The arrays `rhs`, `p`, `q`, `p_positive`, and
         // `q_positive` are automatically zero-initialized.
@@ -246,11 +291,9 @@ struct System {
         assert(p.get(i - 1) != VAR::ONE);
         if (p_positive.get(i - 1)) { return false; }
         p.set(i - 1, VAR::ZERO);
-        // Scan for terms containing p_i and set them to zero.
-        for (std::size_t e = 0; e < M + N - 3; ++e) {
-            for (std::size_t t = 0; t < M + 1; ++t) {
-                if (lhs[e][t].p_index == i) { lhs[e][t] = TERM_ZERO; }
-            }
+        for (std::size_t k = 0; k < P_TABLE.counts[i - 1]; ++k) {
+            const auto [e, t] = P_TABLE.positions[i - 1][k];
+            lhs[e][t] = TERM_ZERO;
         }
         return true;
     }
@@ -261,11 +304,9 @@ struct System {
         assert(q.get(j - 1) != VAR::ONE);
         if (q_positive.get(j - 1)) { return false; }
         q.set(j - 1, VAR::ZERO);
-        // Scan for terms containing q_j and set them to zero.
-        for (std::size_t e = 0; e < M + N - 3; ++e) {
-            for (std::size_t t = 0; t < M + 1; ++t) {
-                if (lhs[e][t].q_index == j) { lhs[e][t] = TERM_ZERO; }
-            }
+        for (std::size_t k = 0; k < Q_TABLE.counts[j - 1]; ++k) {
+            const auto [e, t] = Q_TABLE.positions[j - 1][k];
+            lhs[e][t] = TERM_ZERO;
         }
         return true;
     }
@@ -275,11 +316,9 @@ struct System {
         assert((1 <= i) && (i <= M - 1));
         assert(p.get(i - 1) != VAR::ZERO);
         p.set(i - 1, VAR::ONE);
-        // Scan for terms containing p_i and cancel p_i from them.
-        for (std::size_t e = 0; e < M + N - 3; ++e) {
-            for (std::size_t t = 0; t < M + 1; ++t) {
-                if (lhs[e][t].p_index == i) { lhs[e][t].p_index = 0; }
-            }
+        for (std::size_t k = 0; k < P_TABLE.counts[i - 1]; ++k) {
+            const auto [e, t] = P_TABLE.positions[i - 1][k];
+            if (lhs[e][t].p_index == i) { lhs[e][t].p_index = 0; }
         }
     }
 
@@ -288,11 +327,9 @@ struct System {
         assert((1 <= j) && (j <= N - 1));
         assert(q.get(j - 1) != VAR::ZERO);
         q.set(j - 1, VAR::ONE);
-        // Scan for terms containing q_j and cancel q_j from them.
-        for (std::size_t e = 0; e < M + N - 3; ++e) {
-            for (std::size_t t = 0; t < M + 1; ++t) {
-                if (lhs[e][t].q_index == j) { lhs[e][t].q_index = 0; }
-            }
+        for (std::size_t k = 0; k < Q_TABLE.counts[j - 1]; ++k) {
+            const auto [e, t] = Q_TABLE.positions[j - 1][k];
+            if (lhs[e][t].q_index == j) { lhs[e][t].q_index = 0; }
         }
     }
 
