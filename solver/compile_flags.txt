@@ -1,6 +1,7 @@
 -std=c++20
 -Weverything
 -Wno-c++98-compat-pedantic
+-Wno-padded
 -Wno-switch-default
 -DTERNARY_SOLVER_M=10
 -DTERNARY_SOLVER_N=20

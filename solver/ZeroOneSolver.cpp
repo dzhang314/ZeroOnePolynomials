@@ -8,6 +8,7 @@
 #include <bitset>   // for std::bitset
 #include <cassert>  // for assert
 #include <cstddef>  // for std::size_t
+#include <cstdint>  // for std::uint8_t
 #include <cstdlib>  // for std::strtoull
 #include <iostream> // for std::ostream, std::cout, std::cerr, std::flush
 #include <vector>   // for std::vector
@@ -155,6 +156,213 @@ static void print_leaf_system(const System<M, N> &system) {
 }
 
 
+struct StructuralData {
+
+    std::size_t equation_count;
+    std::size_t equation_indices[M + N - 3];
+    std::uint8_t term_counts[M + N - 3];
+    std::uint8_t linear_term_counts[M + N - 3];
+    std::bitset<M - 1> linear_p_terms[M + N - 3];
+    std::bitset<N - 1> linear_q_terms[M + N - 3];
+
+    explicit StructuralData(const System<M, N> &system) noexcept
+        : equation_count(0)
+        , equation_indices{}
+        , term_counts{}
+        , linear_term_counts{}
+        , linear_p_terms{}
+        , linear_q_terms{} {
+        // Identify equations with RHS 1.
+        for (std::size_t e = 0; e < M + N - 3; ++e) {
+            if (system.rhs.get(e) == RHS::ONE) {
+                const std::size_t i = equation_count++;
+                equation_indices[i] = e;
+                for (std::size_t t = 0; t < M + 1; ++t) {
+                    const Term term = system.lhs[e][t];
+                    assert(term != ZeroOneSolver::TERM_ONE);
+                    if (term == TERM_ZERO) { continue; }
+                    // Count terms in each equation with RHS 1.
+                    ++term_counts[i];
+                    if (term.q_index == 0) {
+                        ++linear_term_counts[i];
+                        linear_p_terms[i].set(term.p_index - 1);
+                    } else if (term.p_index == 0) {
+                        ++linear_term_counts[i];
+                        linear_q_terms[i].set(term.q_index - 1);
+                    }
+                }
+            }
+        }
+    }
+
+    bool can_dominate(std::size_t i, std::size_t j) const noexcept {
+        return ((i != j) && (term_counts[i] <= linear_term_counts[j]) &&
+                (linear_p_terms[i] & ~linear_p_terms[j]).none() &&
+                (linear_q_terms[i] & ~linear_q_terms[j]).none() &&
+                ((term_counts[i] != term_counts[j]) ||
+                 (term_counts[i] != linear_term_counts[i])));
+    }
+
+}; // struct StructuralData
+
+
+struct DominationConsequences {
+
+    std::bitset<M - 1> p_one;
+    std::bitset<N - 1> q_zero;
+    std::bitset<N - 1> q_one;
+    Term split_term;
+
+    constexpr DominationConsequences() noexcept
+        : p_one{}
+        , q_zero{}
+        , q_one{}
+        , split_term(TERM_ZERO) {}
+
+    bool has_simplifications() const noexcept {
+        return p_one.any() || q_zero.any() || q_one.any();
+    }
+
+}; // struct DominationConsequences
+
+
+enum class DominationStatus : std::uint8_t {
+    NO_DOMINATION,
+    FOUND_DOMINATION,
+    FOUND_CONTRADICTION,
+};
+
+
+static DominationStatus find_domination_consequences(
+    DominationConsequences &consequences, const System<M, N> &system,
+    std::size_t e_i, std::size_t e_j, const std::bitset<M - 1> &linear_p_terms,
+    const std::bitset<N - 1> &linear_q_terms) {
+
+    // Match terms and deduce consequences.
+    std::bitset<M - 1> p_matched;
+    std::bitset<N - 1> q_matched;
+    for (std::size_t t = 0; t < M + 1; ++t) {
+        const Term term = system.lhs[e_i][t];
+        assert(term != ZeroOneSolver::TERM_ONE);
+        if (term == TERM_ZERO) { continue; }
+        if (term.q_index == 0) {
+            // Linear term; aready checked by can_dominate.
+            p_matched.set(term.p_index - 1);
+        } else if (term.p_index == 0) {
+            // Linear term; already checked by can_dominate.
+            q_matched.set(term.q_index - 1);
+        } else {
+            // Match terms greedily; terms are unique, so we can't get stuck.
+            assert(system.p_positive.get(term.p_index - 1));
+            if (linear_p_terms.test(term.p_index - 1)) {
+                // p_i == p_i*q_j implies q_j == 1.
+                p_matched.set(term.p_index - 1);
+                consequences.q_one.set(term.q_index - 1);
+            } else if (linear_q_terms.test(term.q_index - 1)) {
+                // q_j == p_i*q_j implies q_j == 0 or p_i == 1.
+                q_matched.set(term.q_index - 1);
+                if (system.q_positive.get(term.q_index - 1)) {
+                    consequences.p_one.set(term.p_index - 1);
+                } else if (consequences.split_term == TERM_ZERO) {
+                    consequences.split_term = term;
+                }
+            } else {
+                return DominationStatus::NO_DOMINATION;
+            }
+        }
+    }
+
+    // Deduce additional consequences from unmatched terms.
+    for (std::size_t t = 0; t < M + 1; ++t) {
+        const Term term = system.lhs[e_j][t];
+        assert(term != ZeroOneSolver::TERM_ONE);
+        if (term == TERM_ZERO) { continue; }
+        if (term.q_index == 0) {
+            // Unmatched p_i must be zero, contradicting p_i > 0.
+            if (!p_matched.test(term.p_index - 1)) {
+                assert(system.p_positive.get(term.p_index - 1));
+                return DominationStatus::FOUND_CONTRADICTION;
+            }
+        } else if (term.p_index == 0) {
+            // Unmatched q_j must be zero.
+            if (!q_matched.test(term.q_index - 1)) {
+                consequences.q_zero.set(term.q_index - 1);
+            }
+        } else {
+            // Unmatched p_i*q_j implies q_j == 0, since p_i > 0.
+            assert(system.p_positive.get(term.p_index - 1));
+            consequences.q_zero.set(term.q_index - 1);
+        }
+    }
+
+    return (consequences.q_zero & consequences.q_one).any()
+               ? DominationStatus::FOUND_CONTRADICTION
+               : DominationStatus::FOUND_DOMINATION;
+}
+
+
+static bool find_domination_move(std::vector<System<M, N>> &stack,
+                                 const System<M, N> &system) {
+
+    const StructuralData data(system);
+    if (data.equation_count < 2) { return false; }
+
+    Term split_term = TERM_ZERO;
+    for (std::size_t i = 0; i < data.equation_count; ++i) {
+        const std::size_t e_i = data.equation_indices[i];
+        for (std::size_t j = 0; j < data.equation_count; ++j) {
+            const std::size_t e_j = data.equation_indices[j];
+            if (!data.can_dominate(i, j)) { continue; }
+
+            DominationConsequences consequences;
+            const DominationStatus status = find_domination_consequences(
+                consequences, system, e_i, e_j, data.linear_p_terms[j],
+                data.linear_q_terms[j]);
+            if (status == DominationStatus::NO_DOMINATION) { continue; }
+            if (status == DominationStatus::FOUND_CONTRADICTION) {
+                return true;
+            }
+            assert(status == DominationStatus::FOUND_DOMINATION);
+
+            if (consequences.has_simplifications()) {
+                stack.push_back(system);
+                for (var_index_t q = 1; q <= N - 1; ++q) {
+                    if (consequences.q_zero.test(q - 1) &&
+                        !stack.back().set_q_zero(q)) {
+                        stack.pop_back();
+                        return true;
+                    }
+                }
+                for (var_index_t p = 1; p <= M - 1; ++p) {
+                    if (consequences.p_one.test(p - 1)) {
+                        stack.back().set_p_one(p);
+                    }
+                }
+                for (var_index_t q = 1; q <= N - 1; ++q) {
+                    if (consequences.q_one.test(q - 1)) {
+                        stack.back().set_q_one(q);
+                    }
+                }
+                return true;
+            }
+            if (split_term == TERM_ZERO) {
+                split_term = consequences.split_term;
+            }
+        }
+    }
+
+    if (split_term != TERM_ZERO) {
+        stack.push_back(system);
+        stack.back().set_q_positive(split_term.q_index);
+        stack.back().set_p_one(split_term.p_index);
+        stack.push_back(system);
+        if (!stack.back().set_q_zero(split_term.q_index)) { stack.pop_back(); }
+        return true;
+    }
+    return false;
+}
+
+
 static bool find_case_split(std::vector<System<M, N>> &stack,
                             const System<M, N> &system) {
 
@@ -247,7 +455,12 @@ static bool find_case_split(std::vector<System<M, N>> &stack,
         }
     }
 
-    // Phase 4: Split LHS == 0 or 1 into LHS == 0 and LHS == 1.
+    // Phase 4: Find "dominating equations", i.e., pairs of equations
+    // of the form LHS_i == 1 and LHS_j == 1 where each term in LHS_i
+    // matches one-to-one to a larger term in LHS_j.
+    if (find_domination_move(stack, system)) { return true; }
+
+    // Phase 5: Split LHS == 0 or 1 into LHS == 0 and LHS == 1.
     for (std::size_t e = 0; e < M + N - 3; ++e) {
         if (system.rhs.get(e) == RHS::ZERO_OR_ONE) {
             stack.push_back(system);
