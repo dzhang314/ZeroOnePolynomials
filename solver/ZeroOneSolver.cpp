@@ -461,14 +461,26 @@ static bool find_case_split(std::vector<System<M, N>> &stack,
     if (find_domination_move(stack, system)) { return true; }
 
     // Phase 5: Split LHS == 0 or 1 into LHS == 0 and LHS == 1.
+    std::size_t e_best = M + N - 3;
+    std::size_t min_count = M + 2;
     for (std::size_t e = 0; e < M + N - 3; ++e) {
         if (system.rhs.get(e) == RHS::ZERO_OR_ONE) {
-            stack.push_back(system);
-            stack.back().rhs.set(e, RHS::ONE);
-            stack.push_back(system);
-            stack.back().rhs.set(e, RHS::ZERO);
-            return true;
+            std::size_t term_count = 0;
+            for (std::size_t t = 0; t < M + 1; ++t) {
+                term_count += (system.lhs[e][t] != TERM_ZERO);
+            }
+            if (term_count < min_count) {
+                e_best = e;
+                min_count = term_count;
+            }
         }
+    }
+    if (e_best < M + N - 3) {
+        stack.push_back(system);
+        stack.back().rhs.set(e_best, RHS::ONE);
+        stack.push_back(system);
+        stack.back().rhs.set(e_best, RHS::ZERO);
+        return true;
     }
 
     return false;
