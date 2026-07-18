@@ -133,11 +133,11 @@ function construct_constraint_matrix(system::System, d::Int)
             end
             push!(row_indices, row_index[m])
             append!(a_index, row_indices)
-            append!(a_value, +_one for _ = 1:length(row_indices)-1)
+            append!(a_value, +_one for _ = 1:(length(row_indices)-1))
             push!(a_value, -_one)
             push!(a_start, length(a_index))
             append!(a_index, row_indices)
-            append!(a_value, -_one for _ = 1:length(row_indices)-1)
+            append!(a_value, -_one for _ = 1:(length(row_indices)-1))
             push!(a_value, +_one)
             push!(a_start, length(a_index))
         end
@@ -482,7 +482,7 @@ function push_paired_term!(
         print(term_buffer, "*p")
     end
     if !isempty(p_indices)
-        for i = 1:length(p_indices)-1
+        for i = 1:(length(p_indices)-1)
             print(term_buffer, p_indices[i])
             print(term_buffer, "*p")
         end
