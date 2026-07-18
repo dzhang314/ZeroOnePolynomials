@@ -166,11 +166,12 @@ end
 export solve_highs # solve_clp
 
 
-function l0_cost(lp::LinearProgram)
+function l0_power_cost(lp::LinearProgram)
     num_columns = length(lp.a_start) - 1
     result = Vector{Cdouble}(undef, num_columns)
     @simd ivdep for j = 1:num_columns
-        @inbounds result[j] = lp.a_start[j+1] - lp.a_start[j]
+        @inbounds result[j] = abs2(abs2(abs2(Cdouble(
+            lp.a_start[j+1] - lp.a_start[j]))))
     end
     return result
 end
@@ -183,7 +184,7 @@ function solve_highs(lp::LinearProgram)
     num_columns = length(lp.a_start) - 1
     num_entries = length(lp.a_index)
     num_rows = length(lp.b)
-    weights = l0_cost(lp)
+    weights = l0_power_cost(lp)
     column_lower_bound = zeros(Cdouble, num_columns)
     column_upper_bound = fill(Cdouble(+Inf), num_columns)
     instance = ccall((:Highs_create, libhighs), Ptr{Cvoid}, ())
@@ -233,7 +234,7 @@ end
 # function solve_clp(lp::LinearProgram)
 #     num_columns = length(lp.a_start) - 1
 #     num_rows = length(lp.b)
-#     weights = l0_cost(lp)
+#     weights = l0_power_cost(lp)
 #     instance = ccall((:Clp_newModel, libClp), Ptr{Cvoid}, ())
 #     try
 #         ccall((:Clp_setLogLevel, libClp),
