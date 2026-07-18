@@ -30,7 +30,7 @@ using Printf: @sprintf
 
 
 @everywhere function prove_infeasible(system::System)
-    for d = 0:4
+    for d = 1:4
         lp = construct_linear_program(system, d)
         numerical_solution = solve_highs(lp)
         if !isnothing(numerical_solution)
