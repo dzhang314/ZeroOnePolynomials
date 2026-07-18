@@ -336,16 +336,32 @@ export solve_exact
 
 
 function construct_flint_submatrix(lp::LinearProgram, indices::Vector{Int})
-    num_rows = length(lp.b)
     num_columns = length(lp.a_start) - 1
-    A = FlintIntegerMatrix(num_rows, length(indices))
-    for (j, column_index) in enumerate(indices)
+    row_map = zeros(Int, length(lp.b))
+    for column_index in indices
         @assert 1 <= column_index <= num_columns
-        for p = Int(lp.a_start[column_index])+1:Int(lp.a_start[column_index+1])
-            A[Int(lp.a_index[p])+1, j] = Int(lp.a_value[p])
+        k_lo = Int(lp.a_start[column_index]) + 1
+        k_hi = Int(lp.a_start[column_index+1])
+        for k = k_lo:k_hi
+            row_map[Int(lp.a_index[k])+1] = 1
         end
     end
-    return A
+    num_rows = 0
+    for i in eachindex(row_map)
+        if !iszero(row_map[i]) || !iszero(lp.b[i])
+            num_rows += 1
+            row_map[i] = num_rows
+        end
+    end
+    A = FlintIntegerMatrix(num_rows, length(indices))
+    for (j, column_index) in enumerate(indices)
+        k_lo = Int(lp.a_start[column_index]) + 1
+        k_hi = Int(lp.a_start[column_index+1])
+        for k = k_lo:k_hi
+            A[row_map[Int(lp.a_index[k])+1], j] = Int(lp.a_value[k])
+        end
+    end
+    return (A, row_map)
 end
 
 
@@ -356,13 +372,13 @@ function solve_exact(
 )
     indices = findall(>(threshold), numerical_solution)
     entries = Vector{Rational{BigInt}}(undef, length(indices))
-    A = construct_flint_submatrix(lp, indices)
-    B = FlintIntegerMatrix(length(lp.b), 1)
+    A, row_map = construct_flint_submatrix(lp, indices)
+    B = FlintIntegerMatrix(A.r, 1)
     X = FlintRationalMatrix(length(indices), 1)
     try
         for (i, v) in enumerate(lp.b)
             if !iszero(v)
-                B[i, 1] = Int(v)
+                B[row_map[i], 1] = Int(v)
             end
         end
         status = ccall((:fmpq_mat_can_solve_fmpz_mat_multi_mod, libflint),
