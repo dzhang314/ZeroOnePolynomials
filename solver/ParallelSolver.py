@@ -152,15 +152,22 @@ def run_zero_one_solver(m: int, n: int, num_processes: int) -> None:
 def merge_chunk_files(m: int, n: int) -> None:
     data_path: str = data_file_path(m, n)
     assert not os.path.isfile(data_path)
+    temp_path: str = data_path + ".temp"
+    assert not os.path.isfile(temp_path)
     num_items: int = 1 << (m - 1)
     num_chunks: int = max(1, num_items // CHUNK_SIZE)
-    with open(data_path, "w") as data_file:
-        for chunk_index in range(num_chunks):
-            chunk_path = chunk_file_path(m, n, chunk_index)
-            assert os.path.isfile(chunk_path)
+    chunk_paths: list[str] = [
+        chunk_file_path(m, n, chunk_index) for chunk_index in range(num_chunks)
+    ]
+    for chunk_path in chunk_paths:
+        assert os.path.isfile(chunk_path)
+    with open(temp_path, "w") as temp_file:
+        for chunk_path in chunk_paths:
             with open(chunk_path) as chunk_file:
-                copyfileobj(chunk_file, data_file)
-            os.remove(chunk_path)
+                copyfileobj(chunk_file, temp_file)
+    os.rename(temp_path, data_path)
+    for chunk_path in chunk_paths:
+        os.remove(chunk_path)
 
 
 def main() -> None:
