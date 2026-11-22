@@ -287,7 +287,7 @@ end
     hi = _one
     if product_lo > _zero
         if iszero(factor_hi)
-            return (_one, _zero)
+            return (_one, _zero) # Empty range indicates unsatisfiable bounds.
         end
         lo = div_lo(product_lo, factor_hi)
     end
@@ -305,14 +305,22 @@ end
     lo::T,
     hi::T,
 ) where {T}
+    _one = one(T)
+    _two = _one + _one
+    _four = _two + _two
+    _eight = _four + _four
+    _sixteen = _eight + _eight
+    _thirty_two = _sixteen + _sixteen
+    _thirty_second = inv(_thirty_two)
+    threshold = _thirty_second * (box_hi[i] - box_lo[i])
     result = false
     if lo > box_lo[i]
+        result |= (lo - box_lo[i]) > threshold
         box_lo[i] = lo
-        result = true
     end
     if hi < box_hi[i]
+        result |= (box_hi[i] - hi) > threshold
         box_hi[i] = hi
-        result = true
     end
     return result
 end
