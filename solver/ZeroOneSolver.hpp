@@ -474,49 +474,92 @@ struct System {
     }
 
 
-    constexpr SimplifyStatus simplify_phase_1() noexcept {
-        // Phase 1: Deduce right-hand sides and eliminate occurrences of 1.
-        SimplifyStatus result = SimplifyStatus::NO_SIMPLIFICATION;
+    constexpr SimplifyStatus simplify_phase_1(std::size_t e) noexcept {
+        // Phase 1.1: Deduce right-hand sides and eliminate occurrences of 1.
         constexpr std::size_t INVALID_INDEX = ~static_cast<std::size_t>(0);
-        for (std::size_t e = 0; e < M + N - 3; ++e) {
-            // Scan the left-hand side of each equation for nonzero terms
-            // and 1, keeping track of the index at which 1 occurs.
-            bool found_nonzero = false;
-            std::size_t one_index = INVALID_INDEX;
+        // Scan the left-hand side of each equation for nonzero terms
+        // and 1, keeping track of the index at which 1 occurs.
+        bool found_nonzero = false;
+        std::size_t one_index = INVALID_INDEX;
+        for (std::size_t t = 0; t < M + 1; ++t) {
+            const Term term = lhs[e][t];
+            if (term != TERM_ZERO) { found_nonzero = true; }
+            if (term == TERM_ONE) {
+                // An equation with multiple copies of 1
+                // on its left-hand side is unsatisfiable.
+                if (one_index != INVALID_INDEX) {
+                    return SimplifyStatus::FOUND_CONTRADICTION;
+                }
+                one_index = t;
+            }
+        }
+        if (!found_nonzero) {
+            // An equation of the form 0 == 1 is unsatisfiable.
+            if (rhs.get(e) == RHS::ONE) {
+                return SimplifyStatus::FOUND_CONTRADICTION;
+            }
+            // If we find no nonzero terms on the left-hand side,
+            // then we set the right-hand side to zero.
+            if (rhs.get(e) == RHS::ZERO_OR_ONE) { rhs.set(e, RHS::ZERO); }
+            return SimplifyStatus::NO_SIMPLIFICATION;
+        } else if (one_index != INVALID_INDEX) {
+            assert(lhs[e][one_index] == TERM_ONE);
+            // ... + 1 + ... == 0 is unsatisfiable.
+            if (rhs.get(e) == RHS::ZERO) {
+                return SimplifyStatus::FOUND_CONTRADICTION;
+            }
+            // If we find 1 on the left-hand side, then we
+            // eliminate it and set the right-hand side to zero.
+            lhs[e][one_index] = TERM_ZERO;
+            rhs.set(e, RHS::ZERO);
+        }
+        // After Phase 1.1, we may assume that 1 does not
+        // appear on the left-hand side of equation e.
+
+        // Phase 1.2: Use right-hand sides to deduce values of variables.
+        SimplifyStatus result = SimplifyStatus::NO_SIMPLIFICATION;
+        const RHS rhs_value = rhs.get(e);
+        if (rhs_value == RHS::ZERO) {
+            // If we see ... + p_i + ... == 0, then we set p_i to 0.
+            // The same holds for ... + q_j + ... == 0. Moreover, if
+            // we see ... + p_i*q_j + ... == 0 where p_i is positive,
+            // then we set q_j to 0 and vice versa.
             for (std::size_t t = 0; t < M + 1; ++t) {
                 const Term term = lhs[e][t];
-                if (term != TERM_ZERO) { found_nonzero = true; }
-                if (term == TERM_ONE) {
-                    // An equation with multiple copies of 1
-                    // on its left-hand side is unsatisfiable.
-                    if (one_index != INVALID_INDEX) {
+                assert(term != TERM_ONE);
+                if (term == TERM_ZERO) { continue; }
+                if (term.q_index == 0) { // p_i
+                    if (!set_p_zero(term.p_index)) {
                         return SimplifyStatus::FOUND_CONTRADICTION;
                     }
-                    one_index = t;
-                }
-            }
-            if (!found_nonzero) {
-                // An equation of the form 0 == 1 is unsatisfiable.
-                if (rhs.get(e) == RHS::ONE) {
-                    return SimplifyStatus::FOUND_CONTRADICTION;
-                }
-                // If we find no nonzero terms on the left-hand side,
-                // then we set the right-hand side to zero.
-                if (rhs.get(e) == RHS::ZERO_OR_ONE) {
-                    rhs.set(e, RHS::ZERO);
+                    result = SimplifyStatus::FOUND_SIMPLIFICATION;
+                } else if (term.p_index == 0) { // q_j
+                    if (!set_q_zero(term.q_index)) {
+                        return SimplifyStatus::FOUND_CONTRADICTION;
+                    }
+                    result = SimplifyStatus::FOUND_SIMPLIFICATION;
+                } else if (p_positive.get(term.p_index - 1)) { // p_i > 0
+                    if (!set_q_zero(term.q_index)) {
+                        return SimplifyStatus::FOUND_CONTRADICTION;
+                    }
+                    result = SimplifyStatus::FOUND_SIMPLIFICATION;
+                } else if (q_positive.get(term.q_index - 1)) { // q_j > 0
+                    if (!set_p_zero(term.p_index)) {
+                        return SimplifyStatus::FOUND_CONTRADICTION;
+                    }
                     result = SimplifyStatus::FOUND_SIMPLIFICATION;
                 }
-            } else if (one_index != INVALID_INDEX) {
-                assert(lhs[e][one_index] == TERM_ONE);
-                // ... + 1 + ... == 0 is unsatisfiable.
-                if (rhs.get(e) == RHS::ZERO) {
-                    return SimplifyStatus::FOUND_CONTRADICTION;
-                }
-                // If we find 1 on the left-hand side, then we
-                // eliminate it and set the right-hand side to zero.
-                lhs[e][one_index] = TERM_ZERO;
-                rhs.set(e, RHS::ZERO);
-                result = SimplifyStatus::FOUND_SIMPLIFICATION;
+            }
+        } else if (rhs_value == RHS::ONE) {
+            // If we see p_i == 1, then we set p_i to 1. The same holds
+            // for q_j == 1 and p_i*q_j == 1 (since p_i and q_j are
+            // constrained to the interval [0, 1]).
+            const Term term = find_unique_nonzero_term(e);
+            assert(term != TERM_ONE);
+            if (term != TERM_ZERO) {
+                if (term.p_index) { set_p_one(term.p_index); }
+                if (term.q_index) { set_q_one(term.q_index); }
+                return SimplifyStatus::FOUND_SIMPLIFICATION;
             }
         }
         return result;
@@ -524,60 +567,7 @@ struct System {
 
 
     constexpr SimplifyStatus simplify_phase_2() noexcept {
-        // Phase 2: Use right-hand sides to deduce values of variables.
-        SimplifyStatus result = SimplifyStatus::NO_SIMPLIFICATION;
-        for (std::size_t e = 0; e < M + N - 3; ++e) {
-            const RHS rhs_value = rhs.get(e);
-            if (rhs_value == RHS::ZERO) {
-                // If we see ... + p_i + ... == 0, then we set p_i to 0.
-                // The same holds for ... + q_j + ... == 0. Moreover, if
-                // we see ... + p_i*q_j + ... == 0 where p_i is positive,
-                // then we set q_j to 0 and vice versa.
-                for (std::size_t t = 0; t < M + 1; ++t) {
-                    const Term term = lhs[e][t];
-                    assert(term != TERM_ONE);
-                    if (term == TERM_ZERO) { continue; }
-                    if (term.q_index == 0) { // p_i
-                        if (!set_p_zero(term.p_index)) {
-                            return SimplifyStatus::FOUND_CONTRADICTION;
-                        }
-                        result = SimplifyStatus::FOUND_SIMPLIFICATION;
-                    } else if (term.p_index == 0) { // q_j
-                        if (!set_q_zero(term.q_index)) {
-                            return SimplifyStatus::FOUND_CONTRADICTION;
-                        }
-                        result = SimplifyStatus::FOUND_SIMPLIFICATION;
-                    } else if (p_positive.get(term.p_index - 1)) { // p_i > 0
-                        if (!set_q_zero(term.q_index)) {
-                            return SimplifyStatus::FOUND_CONTRADICTION;
-                        }
-                        result = SimplifyStatus::FOUND_SIMPLIFICATION;
-                    } else if (q_positive.get(term.q_index - 1)) { // q_j > 0
-                        if (!set_p_zero(term.p_index)) {
-                            return SimplifyStatus::FOUND_CONTRADICTION;
-                        }
-                        result = SimplifyStatus::FOUND_SIMPLIFICATION;
-                    }
-                }
-            } else if (rhs_value == RHS::ONE) {
-                // If we see p_i == 1, then we set p_i to 1. The same holds
-                // for q_j == 1 and p_i*q_j == 1 (since p_i and q_j are
-                // constrained to the interval [0, 1]).
-                const Term term = find_unique_nonzero_term(e);
-                assert(term != TERM_ONE);
-                if (term != TERM_ZERO) {
-                    if (term.p_index) { set_p_one(term.p_index); }
-                    if (term.q_index) { set_q_one(term.q_index); }
-                    return SimplifyStatus::FOUND_SIMPLIFICATION;
-                }
-            }
-        }
-        return result;
-    }
-
-
-    constexpr SimplifyStatus simplify_phase_3() noexcept {
-        // Phase 3: Eliminate unknown variables by all-but-one principle.
+        // Phase 2: Eliminate unknown variables by all-but-one principle.
         SimplifyStatus result = SimplifyStatus::NO_SIMPLIFICATION;
         for (std::size_t e = 0; e < M + N - 3; ++e) {
             // If every term in an equation except one is already known
@@ -601,14 +591,14 @@ struct System {
     }
 
 
-    constexpr SimplifyStatus simplify_phase_4() noexcept {
-        // Phase 4: Eliminate unknown variables in subsystems of the form:
+    constexpr SimplifyStatus simplify_phase_3() noexcept {
+        // Phase 3: Eliminate unknown variables in subsystems of the form:
         //     v*w == 0 or 1
         //     v + w == 0 or 1
         // The only real solutions of this subsystem are (v, w) == (0, 0),
         // (0, 1), or (1, 0), so we deduce that v and w are both 0 or 1.
 
-        // Phase 4.1: Find equations of the form v*w == 0 or 1.
+        // Phase 3.1: Find equations of the form v*w == 0 or 1.
         Term unique[M + N - 3];
         std::size_t t = 0;
         for (std::size_t e = 0; e < M + N - 3; ++e) {
@@ -618,16 +608,16 @@ struct System {
             assert(term != TERM_ONE);
             if (term != TERM_ZERO) {
                 assert(is_unknown(term));
-                // In Phase 4, all unique unknown terms have the form
+                // In Phase 3, all unique unknown terms have the form
                 // p_i*q_j, since any unique unknown term of the form
-                // p_i or q_j would have been eliminated in Phase 3.
+                // p_i or q_j would have been eliminated in Phase 2.
                 assert(term.p_index);
                 assert(term.q_index);
                 unique[t++] = term;
             }
         }
 
-        // Phase 4.2: Find equations of the form v + w == 0 or 1.
+        // Phase 3.2: Find equations of the form v + w == 0 or 1.
         SimplifyStatus result = SimplifyStatus::NO_SIMPLIFICATION;
         for (std::size_t e = 0; e < M + N - 3; ++e) {
             const auto [x, y] = find_two_nonzero_terms(e);
@@ -668,47 +658,48 @@ struct System {
 
         while (true) {
 
-            if (simplify_phase_1() == SimplifyStatus::FOUND_CONTRADICTION) {
-                return false;
+            bool found_simplification = false;
+            for (std::size_t e = 0; e < M + N - 3; ++e) {
+                const SimplifyStatus status = simplify_phase_1(e);
+                if (status == SimplifyStatus::FOUND_CONTRADICTION) {
+                    return false;
+                }
+                if (status == SimplifyStatus::FOUND_SIMPLIFICATION) {
+                    found_simplification = true;
+                }
             }
-            // After Phase 1, we may assume that 1 does not
-            // appear on the left-hand side of any equation.
-
-            const SimplifyStatus phase_2 = simplify_phase_2();
-            if (phase_2 == SimplifyStatus::FOUND_CONTRADICTION) {
-                return false;
-            }
-            // Setting a variable in Phase 2 can enable further
+            // Setting a variable in Phase 1.2 can enable further
             // simplification. If this occurs, we repeat Phase 1.
-            if (phase_2 == SimplifyStatus::FOUND_SIMPLIFICATION) { continue; }
-            // If no variables were set in Phase 2, then we proceed to Phase 3.
+            if (found_simplification) { continue; }
+            // If no variables were set in Phase 1.2, we proceed to Phase 2.
 
             // At this point, we cannot determine the values of any more
             // variables or right-hand sides. However, it is still possible
             // to conclude that a variable must be either 0 or 1 without
             // determining which of the two values it takes. We call this
             // process "eliminating unknowns."
+            if (!has_unknown_variable()) { return true; }
             while (true) {
+
+                const SimplifyStatus phase_2 = simplify_phase_2();
+                // Eliminating unknowns can lead us to deduce that a variable
+                // is both positive and binary. If so, we return to phase 1.
+                if (simplify_positive_binary()) { break; }
+                if (phase_2 == SimplifyStatus::FOUND_SIMPLIFICATION) {
+                    // If no unknowns remain, then simplification is complete.
+                    if (!has_unknown_variable()) { return true; }
+                    // Eliminating unknowns can enable further elimination.
+                    // We repeat Phase 2 to check.
+                    continue;
+                }
 
                 const SimplifyStatus phase_3 = simplify_phase_3();
                 // Eliminating unknowns can lead us to deduce that a variable
                 // is both positive and binary. If so, we return to phase 1.
                 if (simplify_positive_binary()) { break; }
-                if (phase_3 == SimplifyStatus::FOUND_SIMPLIFICATION) {
-                    // If no unknowns remain, then simplification is complete.
-                    if (!has_unknown_variable()) { return true; }
-                    // Eliminating unknowns can enable further elimination.
-                    // We repeat Phase 3 to check.
-                    continue;
-                }
-
-                const SimplifyStatus phase_4 = simplify_phase_4();
-                // Eliminating unknowns can lead us to deduce that a variable
-                // is both positive and binary. If so, we return to phase 1.
-                if (simplify_positive_binary()) { break; }
                 // Eliminating unknowns can enable further elimination.
-                // We repeat Phase 3 to check.
-                if ((phase_4 == SimplifyStatus::FOUND_SIMPLIFICATION) &&
+                // We repeat Phase 2 to check.
+                if ((phase_3 == SimplifyStatus::FOUND_SIMPLIFICATION) &&
                     has_unknown_variable()) {
                     continue;
                 }
