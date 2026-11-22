@@ -51,6 +51,7 @@ def main():
                             ):
                                 clear_progress()
                                 print(proof_file.path, flush=True)
+                                continue
                             n += 1
                             if n % 100_000 == 0:
                                 print_progress(f"Found {n} proof files.")
