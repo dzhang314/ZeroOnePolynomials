@@ -675,6 +675,11 @@ struct System {
                     found_simplification = true;
                 }
             }
+
+            // If no unknown variables remain, then we are done;
+            // all coefficients of P(x) and Q(x) lie in {0,1}.
+            if (!has_unknown_variable()) { return true; }
+
             // Setting a variable in Phase 1.2 can enable further
             // simplification. If this occurs, we repeat Phase 1.
             if (found_simplification) { continue; }
@@ -685,7 +690,6 @@ struct System {
             // to conclude that a variable must be either 0 or 1 without
             // determining which of the two values it takes. We call this
             // process "eliminating unknowns."
-            if (!has_unknown_variable()) { return true; }
             while (true) {
 
                 const SimplifyStatus phase_2 = simplify_phase_2();
