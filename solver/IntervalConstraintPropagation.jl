@@ -89,6 +89,109 @@ function PackedSystem(system::System)
 end
 
 
+############################################################ DIRECTED ARITHMETIC
+
+
+@inline function _two_sum(x::T, y::T) where {T}
+    s = x + y
+    x_prime = s - y
+    y_prime = s - x_prime
+    x_err = x - x_prime
+    y_err = y - y_prime
+    e = x_err + y_err
+    return (s, e)
+end
+
+
+@inline function _two_diff(x::T, y::T) where {T}
+    d = x - y
+    x_prime = d + y
+    y_prime = x_prime - d
+    x_err = x - x_prime
+    y_err = y - y_prime
+    e = x_err - y_err
+    return (d, e)
+end
+
+
+@inline function _two_prod(x::T, y::T) where {T}
+    p = x * y
+    e = fma(x, y, -p)
+    return (p, e)
+end
+
+
+@inline function _prev(x::T) where {T}
+    S = Base.inttype(T)
+    u = reinterpret(S, x)
+    v = ifelse(iszero(u), typemin(S) + one(S), u - flipsign(one(S), u))
+    return ifelse(x > typemin(T), reinterpret(T, v), x)
+end
+
+@inline function _next(x::T) where {T}
+    S = Base.inttype(T)
+    u = reinterpret(S, x)
+    v = ifelse(u == typemin(S), one(S), u + flipsign(one(S), u))
+    return ifelse(x < typemax(T), reinterpret(T, v), x)
+end
+
+
+@inline function add_lo(x::T, y::T) where {T}
+    s, e = _two_sum(x, y)
+    return ifelse(e >= zero(T), s, _prev(s))
+end
+
+@inline function add_hi(x::T, y::T) where {T}
+    s, e = _two_sum(x, y)
+    return ifelse(e <= zero(T), s, _next(s))
+end
+
+
+@inline function sub_lo(x::T, y::T) where {T}
+    d, e = _two_diff(x, y)
+    return ifelse(e >= zero(T), d, _prev(d))
+end
+
+@inline function sub_hi(x::T, y::T) where {T}
+    d, e = _two_diff(x, y)
+    return ifelse(e <= zero(T), d, _next(d))
+end
+
+
+@inline _underflow_threshold(::Type{T}) where {T} =
+    ldexp(one(T), exponent(floatmin(T)) + precision(T))
+
+
+@inline function mul_lo(x::T, y::T) where {T}
+    p, e = _two_prod(x, y)
+    correct_sign = iszero(x) | iszero(y) |
+        (abs(p) >= _underflow_threshold(T)) | !iszero(e)
+    return ifelse(correct_sign & (e >= zero(T)), p, _prev(p))
+end
+
+@inline function mul_hi(x::T, y::T) where {T}
+    p, e = _two_prod(x, y)
+    correct_sign = iszero(x) | iszero(y) |
+        (abs(p) >= _underflow_threshold(T)) | !iszero(e)
+    return ifelse(correct_sign & (e <= zero(T)), p, _next(p))
+end
+
+
+@inline function div_lo(x::T, y::T) where {T}
+    q = x / y
+    e = fma(-q, abs(y), flipsign(x, y))
+    correct_sign = iszero(x) | (abs(x) >= _underflow_threshold(T)) | !iszero(e)
+    return ifelse(correct_sign & (e >= zero(T)), q, _prev(q))
+end
+
+@inline function div_hi(x::T, y::T) where {T}
+    q = x / y
+    e = fma(-q, abs(y), flipsign(x, y))
+    correct_sign = iszero(x) | (abs(x) >= _underflow_threshold(T)) | !iszero(e)
+    return ifelse(correct_sign & (e <= zero(T)), q, _next(q))
+end
+
+
 ################################################################################
 
 end # module IntervalConstraintPropagation
