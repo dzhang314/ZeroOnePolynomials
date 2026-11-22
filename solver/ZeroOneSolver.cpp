@@ -518,6 +518,10 @@ static void analyze(const std::bitset<M - 1> &case_id) {
             initial.set_p_positive(i);
             initial.set_q_zero(M - i);
             initial.set_q_zero(N - i);
+            // If p_i > 0, then the coefficients of x^i and x^(N+i) in
+            // P(x) * Q(x) must be 1, immediately determining RHS::ONE.
+            initial.rhs.set(static_cast<std::size_t>(i - 1), RHS::ONE);
+            initial.rhs.set(static_cast<std::size_t>(N - 3 + i), RHS::ONE);
         } else {
             initial.set_p_zero(i);
         }
