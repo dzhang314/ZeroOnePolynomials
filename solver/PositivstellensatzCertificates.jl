@@ -2,7 +2,7 @@ module PositivstellensatzCertificates
 
 using FLINT_jll: libflint
 using HiGHS_jll: libhighs
-using SparseArrays: SparseMatrixCSC, SparseVector
+using SparseArrays: SparseMatrixCSC, SparseVector, dropzeros!
 
 ####################################################### EQUATION DATA STRUCTURES
 
@@ -369,8 +369,9 @@ function solve_exact(
     a = SparseMatrixCSC(length(lp.b), length(lp.a_start) - 1,
         Int.(lp.a_start) .+ 1, Int.(lp.a_index) .+ 1, Int.(lp.a_value))
     x = SparseVector(length(lp.a_start) - 1, indices, entries)
+    dropzeros!(x)
     b = a * x
-    return (b.nzind == [1]) && (b.nzval == [1]) ? (indices, entries) : nothing
+    return (b.nzind == [1]) && (b.nzval == [1]) ? (x.nzind, x.nzval) : nothing
 end
 
 
@@ -452,7 +453,9 @@ function push_paired_term!(
     entry = isnothing(entry_neg) ? entry_pos :
             isnothing(entry_pos) ? -entry_neg :
             entry_pos - entry_neg
-    @assert !iszero(entry)
+    if iszero(entry)
+        return terms
+    end
     term_buffer = IOBuffer()
     if isempty(p_indices)
         print_rational(term_buffer, entry)
