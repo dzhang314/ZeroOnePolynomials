@@ -9,7 +9,7 @@
 #include <cassert>  // for assert
 #include <cstddef>  // for std::size_t
 #include <cstdint>  // for std::uint8_t
-#include <cstdlib>  // for std::strtoull
+#include <cstdlib>  // for std::strtoull, EXIT_SUCCESS, EXIT_FAILURE
 #include <iostream> // for std::ostream, std::cout, std::cerr, std::flush
 #include <vector>   // for std::vector
 
@@ -581,4 +581,5 @@ int main(int argc, char **argv) {
         }
         if (!exceeds_reverse(case_id)) { analyze(case_id); }
     } while (increment(case_id));
+    return std::cout.flush() ? EXIT_SUCCESS : EXIT_FAILURE;
 }
