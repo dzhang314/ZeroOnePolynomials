@@ -274,6 +274,13 @@ struct System {
     }
 
 
+    static constexpr std::size_t lhs_length(std::size_t e) noexcept {
+        if (e < M - 1) { return e + 2; }
+        if (e < N - 2) { return M + 1; }
+        return M + N - 2 - e;
+    }
+
+
     constexpr VAR get_p(var_index_t i) const noexcept {
         assert((1 <= i) && (i <= M - 1));
         return p.get(i - 1);
@@ -393,7 +400,7 @@ struct System {
 
     constexpr Term find_unique_nonzero_term(std::size_t e) const noexcept {
         Term result = TERM_ZERO;
-        for (std::size_t t = 0; t < M + 1; ++t) {
+        for (std::size_t t = 0; t < lhs_length(e); ++t) {
             const Term term = lhs[e][t];
             if (term != TERM_ZERO) {
                 if (result != TERM_ZERO) {
@@ -409,7 +416,7 @@ struct System {
 
     constexpr Term find_unique_unknown_term(std::size_t e) const noexcept {
         Term result = TERM_ZERO;
-        for (std::size_t t = 0; t < M + 1; ++t) {
+        for (std::size_t t = 0; t < lhs_length(e); ++t) {
             const Term term = lhs[e][t];
             if (is_unknown(term)) {
                 if (result != TERM_ZERO) {
@@ -428,7 +435,7 @@ struct System {
         std::pair<Term, Term> result = {TERM_ZERO, TERM_ZERO};
         Term &first = result.first;
         Term &second = result.second;
-        for (std::size_t t = 0; t < M + 1; ++t) {
+        for (std::size_t t = 0; t < lhs_length(e); ++t) {
             const Term term = lhs[e][t];
             if (term != TERM_ZERO) {
                 if (first == TERM_ZERO) {
@@ -481,7 +488,7 @@ struct System {
         // and 1, keeping track of the index at which 1 occurs.
         bool found_nonzero = false;
         std::size_t one_index = INVALID_INDEX;
-        for (std::size_t t = 0; t < M + 1; ++t) {
+        for (std::size_t t = 0; t < lhs_length(e); ++t) {
             const Term term = lhs[e][t];
             if (term != TERM_ZERO) { found_nonzero = true; }
             if (term == TERM_ONE) {
@@ -524,7 +531,7 @@ struct System {
             // The same holds for ... + q_j + ... == 0. Moreover, if
             // we see ... + p_i*q_j + ... == 0 where p_i is positive,
             // then we set q_j to 0 and vice versa.
-            for (std::size_t t = 0; t < M + 1; ++t) {
+            for (std::size_t t = 0; t < lhs_length(e); ++t) {
                 const Term term = lhs[e][t];
                 assert(term != TERM_ONE);
                 if (term == TERM_ZERO) { continue; }
