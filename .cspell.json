@@ -4,6 +4,7 @@
         "antidiagonal",
         "coeff",
         "cofactor",
+        "coloneqq",
         "Cvoid",
         "docstrings",
         "DTERNARY",
@@ -20,6 +21,7 @@
         "leanprover",
         "libflint",
         "libhighs",
+        "mathbb",
         "mathlib",
         "monic",
         "myid",
@@ -34,6 +36,7 @@
         "sprintf",
         "submatrix",
         "symm",
+        "unital",
         "Weverything",
         "Wextra",
         "Zhang"
