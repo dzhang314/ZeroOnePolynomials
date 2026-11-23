@@ -286,12 +286,12 @@ end
     lo = _zero
     hi = _one
     if product_lo > _zero
-        if iszero(factor_hi)
-            return (_one, _zero) # Empty range indicates unsatisfiable bounds.
+        if product_lo > factor_hi
+            return (_one, _zero)
         end
         lo = div_lo(product_lo, factor_hi)
     end
-    if (product_hi < _one) & !iszero(factor_lo)
+    if (product_hi < factor_lo) & !iszero(factor_lo)
         hi = div_hi(product_hi, factor_lo)
     end
     return (lo, hi)
@@ -340,9 +340,12 @@ end
     end
     p_lo, p_hi = factor_bounds(lo, hi, box_lo[q], box_hi[q])
     changed = tighten!(box_lo, box_hi, p, p_lo, p_hi)
+    if box_lo[p] > box_hi[p]
+        return (changed, true)
+    end
     q_lo, q_hi = factor_bounds(lo, hi, box_lo[p], box_hi[p])
     changed |= tighten!(box_lo, box_hi, q, q_lo, q_hi)
-    return (changed, (box_lo[p] > box_hi[p]) | (box_lo[q] > box_hi[q]))
+    return (changed, box_lo[q] > box_hi[q])
 end
 
 
