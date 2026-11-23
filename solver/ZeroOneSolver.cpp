@@ -513,30 +513,30 @@ consteval System<M, N> initial_system() noexcept {
 
 static void analyze(const std::bitset<M - 1> &case_id) {
     std::vector<System<M, N>> stack;
-    System<M, N> initial = initial_system();
+    System<M, N> system = initial_system();
     for (var_index_t i = 1; i <= M - 1; ++i) {
         if (case_id[i - 1]) {
-            initial.set_p_positive(i);
-            initial.set_q_zero(M - i);
-            initial.set_q_zero(N - i);
+            system.set_p_positive(i);
+            system.set_q_zero(M - i);
+            system.set_q_zero(N - i);
             // If p_i > 0, then the coefficients of x^i and x^(N+i) in
             // P(x) * Q(x) must be 1, immediately determining RHS::ONE.
-            initial.rhs.set(static_cast<std::size_t>(i - 1), RHS::ONE);
-            initial.rhs.set(static_cast<std::size_t>(N - 3 + i), RHS::ONE);
+            system.rhs.set(static_cast<std::size_t>(i - 1), RHS::ONE);
+            system.rhs.set(static_cast<std::size_t>(N - 3 + i), RHS::ONE);
         } else {
-            initial.set_p_zero(i);
+            system.set_p_zero(i);
         }
     }
-    stack.push_back(initial);
-    while (!stack.empty()) {
-        System<M, N> system = stack.back();
-        stack.pop_back();
+    while (true) {
         if (system.simplify() && system.has_unknown_variable()) {
             if (!find_case_split(stack, system)) {
                 print_leaf_system(system);
                 std::cout << '\n';
             }
         }
+        if (stack.empty()) { return; }
+        system = stack.back();
+        stack.pop_back();
     }
 }
 
