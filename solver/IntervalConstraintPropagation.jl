@@ -336,13 +336,13 @@ end
 ) where {T}
     if iszero(q)
         changed = tighten!(box_lo, box_hi, p, lo, hi)
-        return (box_lo[p] > box_hi[p], changed)
+        return (changed, box_lo[p] > box_hi[p])
     end
     p_lo, p_hi = factor_bounds(lo, hi, box_lo[q], box_hi[q])
     changed = tighten!(box_lo, box_hi, p, p_lo, p_hi)
     q_lo, q_hi = factor_bounds(lo, hi, box_lo[p], box_hi[p])
     changed |= tighten!(box_lo, box_hi, q, q_lo, q_hi)
-    return ((box_lo[p] > box_hi[p]) | (box_lo[q] > box_hi[q]), changed)
+    return (changed, (box_lo[p] > box_hi[p]) | (box_lo[q] > box_hi[q]))
 end
 
 
