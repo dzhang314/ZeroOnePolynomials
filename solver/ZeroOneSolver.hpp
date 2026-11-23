@@ -493,7 +493,7 @@ struct System {
             if (term != TERM_ZERO) { found_nonzero = true; }
             if (term == TERM_ONE) {
                 // An equation with multiple copies of 1
-                // on its left-hand side is unsatisfiable.
+                // on its left-hand side is infeasible.
                 if (one_index != INVALID_INDEX) {
                     return SimplifyStatus::FOUND_CONTRADICTION;
                 }
@@ -501,7 +501,7 @@ struct System {
             }
         }
         if (!found_nonzero) {
-            // An equation of the form 0 == 1 is unsatisfiable.
+            // An equation of the form 0 == 1 is infeasible.
             if (rhs.get(e) == RHS::ONE) {
                 return SimplifyStatus::FOUND_CONTRADICTION;
             }
@@ -511,7 +511,7 @@ struct System {
             return SimplifyStatus::NO_SIMPLIFICATION;
         } else if (one_index != INVALID_INDEX) {
             assert(lhs[e][one_index] == TERM_ONE);
-            // ... + 1 + ... == 0 is unsatisfiable.
+            // ... + 1 + ... == 0 is infeasible.
             if (rhs.get(e) == RHS::ZERO) {
                 return SimplifyStatus::FOUND_CONTRADICTION;
             }
