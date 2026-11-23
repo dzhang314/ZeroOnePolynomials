@@ -7,6 +7,7 @@
 
 #include <bitset>   // for std::bitset
 #include <cassert>  // for assert
+#include <cerrno>   // for errno
 #include <cstddef>  // for std::size_t
 #include <cstdint>  // for std::uint8_t
 #include <cstdlib>  // for std::strtoull, EXIT_SUCCESS, EXIT_FAILURE
@@ -571,8 +572,17 @@ static bool exceeds_reverse(const std::bitset<M - 1> &case_id) noexcept {
 
 int main(int argc, char **argv) {
     const bool range_supplied = (argc >= 3);
-    unsigned long long remaining_cases =
-        range_supplied ? std::strtoull(argv[2], nullptr, 10) : 0;
+    unsigned long long remaining_cases = 0;
+    if (range_supplied) {
+        char *end = nullptr;
+        errno = 0;
+        remaining_cases = std::strtoull(argv[2], &end, 10);
+        if ((argv[2][0] < '0') || (argv[2][0] > '9') || (*end != '\0') ||
+            (errno != 0)) {
+            std::cerr << "ERROR: Invalid case count." << std::endl;
+            return EXIT_FAILURE;
+        }
+    }
     std::bitset<M - 1> case_id(range_supplied ? argv[1] : "");
     do {
         if (range_supplied) {
