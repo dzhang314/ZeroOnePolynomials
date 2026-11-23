@@ -153,7 +153,6 @@ def merge_chunk_files(m: int, n: int) -> None:
     data_path: str = data_file_path(m, n)
     assert not os.path.isfile(data_path)
     temp_path: str = data_path + ".temp"
-    assert not os.path.isfile(temp_path)
     num_items: int = 1 << (m - 1)
     num_chunks: int = max(1, num_items // CHUNK_SIZE)
     chunk_paths: list[str] = [
