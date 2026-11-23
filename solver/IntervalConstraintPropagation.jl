@@ -115,13 +115,6 @@ end
 end
 
 
-@inline function _two_prod(x::T, y::T) where {T}
-    p = x * y
-    e = fma(x, y, -p)
-    return (p, e)
-end
-
-
 @inline function _prev(x::T) where {T}
     S = Base.inttype(T)
     u = reinterpret(S, x)
@@ -159,37 +152,29 @@ end
 end
 
 
-@inline _underflow_threshold(::Type{T}) where {T} =
-    ldexp(one(T), exponent(floatmin(T)) + precision(T))
-
-
 @inline function mul_lo(x::T, y::T) where {T}
-    p, e = _two_prod(x, y)
-    correct_sign = iszero(x) | iszero(y) |
-        (abs(p) >= _underflow_threshold(T)) | !iszero(e)
-    return ifelse(correct_sign & (e >= zero(T)), p, _prev(p))
+    p = x * y
+    e = fma(x, y, -p)
+    return ifelse(signbit(e) | isnan(e), _prev(p), p)
 end
 
 @inline function mul_hi(x::T, y::T) where {T}
-    p, e = _two_prod(x, y)
-    correct_sign = iszero(x) | iszero(y) |
-        (abs(p) >= _underflow_threshold(T)) | !iszero(e)
-    return ifelse(correct_sign & (e <= zero(T)), p, _next(p))
+    p = x * y
+    e = fma(-x, y, p)
+    return ifelse(signbit(e) | isnan(e), _next(p), p)
 end
 
 
 @inline function div_lo(x::T, y::T) where {T}
     q = x / y
     e = fma(-q, abs(y), flipsign(x, y))
-    correct_sign = iszero(x) | (abs(x) >= _underflow_threshold(T)) | !iszero(e)
-    return ifelse(correct_sign & (e >= zero(T)), q, _prev(q))
+    return ifelse(signbit(e) | isnan(e), _prev(q), q)
 end
 
 @inline function div_hi(x::T, y::T) where {T}
     q = x / y
-    e = fma(-q, abs(y), flipsign(x, y))
-    correct_sign = iszero(x) | (abs(x) >= _underflow_threshold(T)) | !iszero(e)
-    return ifelse(correct_sign & (e <= zero(T)), q, _next(q))
+    e = fma(q, abs(y), -flipsign(x, y))
+    return ifelse(signbit(e) | isnan(e), _next(q), q)
 end
 
 
