@@ -334,6 +334,56 @@ end
 end
 
 
+function refute_box!(ws::BoxWorkspace{T}, packed::PackedSystem) where {T}
+    _zero = zero(T)
+    _one = one(T)
+    while true
+        changed = false
+        for e = 1:(length(packed.offsets)-1)
+            offset = packed.offsets[e]
+            num_terms = packed.offsets[e+1] - offset
+            lhs_lo = _zero
+            lhs_hi = _zero
+            max_width = _zero
+            for j = 1:num_terms
+                lo, hi = term_bounds(packed, offset + j, ws.box_lo, ws.box_hi)
+                ws.term_lo[j] = lo
+                ws.term_hi[j] = hi
+                lhs_lo = add_lo(lhs_lo, lo)
+                lhs_hi = add_hi(lhs_hi, hi)
+                max_width = max(max_width, sub_hi(hi, lo))
+            end
+            if (lhs_lo > _one) | (lhs_hi < _one)
+                return true
+            end
+            slack_above_lo = sub_lo(lhs_hi, _one)
+            slack_above_hi = sub_hi(lhs_hi, _one)
+            slack_below_lo = sub_lo(_one, lhs_lo)
+            slack_below_hi = sub_hi(_one, lhs_lo)
+            # If no term is wider than the slack, tightening cannot help.
+            if (max_width <= slack_above_lo) & (max_width <= slack_below_lo)
+                continue
+            end
+            for j = 1:num_terms
+                p, q = packed.terms[offset+j]
+                tightened, empty_interval = contract_term!(
+                    ws.box_lo, ws.box_hi, p, q,
+                    sub_lo(ws.term_hi[j], slack_above_hi),
+                    add_hi(ws.term_lo[j], slack_below_hi))
+                if empty_interval
+                    return true
+                end
+                changed |= tightened
+            end
+        end
+        if !changed
+            break
+        end
+    end
+    return false
+end
+
+
 ################################################################################
 
 end # module IntervalConstraintPropagation
