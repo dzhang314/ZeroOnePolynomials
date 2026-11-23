@@ -94,26 +94,27 @@ function construct_constraint_matrix(system::System, d::Int)
     a_value = Cdouble[]
     push!(a_start, length(a_index))
     for box_indices in construct_monomials(2 * np, d + 1)
-        box_product = construct_box_product(box_indices, np)
+        box_entries = [(row_index[m], -c)
+                       for (m, c) in construct_box_product(box_indices, np)]
         if !isempty(box_indices)
-            for (m, c) in box_product
-                push!(a_index, row_index[m])
-                push!(a_value, -c)
+            for (row, value) in box_entries
+                push!(a_index, row)
+                push!(a_value, value)
             end
             push!(a_start, length(a_index))
         end
         if length(box_indices) <= d
             for j = 1:nq
-                for (m, c) in box_product
-                    push!(a_index, row_index[m] + j)
-                    push!(a_value, -c)
+                for (row, value) in box_entries
+                    push!(a_index, row + j)
+                    push!(a_value, value)
                 end
                 push!(a_start, length(a_index))
-                for (m, c) in box_product
-                    push!(a_index, row_index[m])
-                    push!(a_value, -c)
-                    push!(a_index, row_index[m] + j)
-                    push!(a_value, +c)
+                for (row, value) in box_entries
+                    push!(a_index, row)
+                    push!(a_value, value)
+                    push!(a_index, row + j)
+                    push!(a_value, -value)
                 end
                 push!(a_start, length(a_index))
             end
@@ -146,6 +147,10 @@ end
 
 
 function construct_linear_program(system::System, d::Int)
+    for equation in system
+        @assert !((0, 0) in equation)
+        @assert allunique(equation)
+    end
     num_rows, a_start, a_index, a_value =
         construct_constraint_matrix(system, d)
     @assert iszero(a_start[begin])
