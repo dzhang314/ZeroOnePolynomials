@@ -151,9 +151,11 @@ const _STAR = UInt8('*')
         head = bytes[i]
         if head == _P
             p, i = parse_int(bytes, i + 1)
+            @assert p > 0
             if (i <= n) && (bytes[i] == _STAR)
                 @assert (i < n) && (bytes[i+1] == _Q)
                 q, i = parse_int(bytes, i + 2) # skip "*q"
+                @assert q > 0
                 return ((p, q), i)
             else
                 return ((p, 0), i)
@@ -161,6 +163,7 @@ const _STAR = UInt8('*')
         else
             @assert head == _Q
             q, i = parse_int(bytes, i + 1) # skip 'q'
+            @assert q > 0
             return ((0, q), i)
         end
     end
@@ -174,16 +177,23 @@ const _NEWLINE = UInt8('\n')
 function parse_equation(bytes::AbstractVector{UInt8}, i::Int)
     n = lastindex(bytes)
     result = Term[]
+    expecting_term = true
     @inbounds while i <= n
         b = bytes[i]
-        if b == _NEWLINE
-            return (result, i + 1)
-        elseif (b == _PLUS) | (b == _SPACE)
+        if b == _SPACE
             i += 1
-        else
+            continue
+        elseif b == _NEWLINE
+            @assert !expecting_term
+            return (result, i + 1)
+        elseif expecting_term
             term, i = parse_term(bytes, i)
             push!(result, term)
+        else
+            @assert b == _PLUS
+            i += 1
         end
+        expecting_term = !expecting_term
     end
     throw(ArgumentError("equation must be terminated by '\\n'"))
 end
@@ -195,6 +205,7 @@ function parse_system(bytes::AbstractVector{UInt8}, i::Int)
     @inbounds while i <= n
         b = bytes[i]
         if b == _NEWLINE
+            @assert !isempty(result)
             return (result, i + 1)
         else
             equation, i = parse_equation(bytes, i)
