@@ -92,7 +92,7 @@ end
 
 
 @inline fold_digit_int(accumulator::Int, digit::UInt8) =
-    muladd(10, accumulator, Int(digit))
+    checked_add(checked_mul(10, accumulator), Int(digit))
 
 @inline parse_int(bytes::AbstractVector{UInt8}, i::Int) =
     parse_integer(Int, fold_digit_int, bytes, i)
